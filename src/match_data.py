@@ -260,13 +260,13 @@ class MatchDataManager:
             logger.error(f"批量保存比赛数据时出错: {e}")
             return None
 
-    def get_matches(self, filters=None, limit=100):
+    def get_matches(self, filters=None, limit=None):
         """
         获取比赛数据
 
         Args:
             filters (dict): 查询过滤条件
-            limit (int): 返回结果的最大数量
+            limit (int, None): 返回结果的最大数量，设为None时不限制数量
 
         Returns:
             list: 比赛数据列表
@@ -275,11 +275,39 @@ class MatchDataManager:
         if self.is_connected():
             try:
                 query = filters or {}
-                matches = list(self.collection.find(query).limit(limit))
+                # 输出检索命令到控制台
+                print(
+                    f"执行MongoDB查询: 数据库='{self.db_name}', 集合='{self.collection_name}', 查询条件={query}, 限制={limit if limit is not None else '无限制'}"
+                )
+                # 执行查询
+                if limit is not None:
+                    matches = list(self.collection.find(query).limit(limit))
+                else:
+                    matches = list(self.collection.find(query))
+                print(f"MongoDB查询结果: 找到{len(matches)}条数据")
                 logger.info(f"成功从MongoDB查询到 {len(matches)} 条比赛数据")
+
+                # 如果数据库查询成功但没有找到数据，也使用模拟数据
+                if not matches:
+                    print("MongoDB查询返回空结果，使用模拟数据...")
+                    return self._filter_mock_data(filters, limit)
+
+                # 输出前3条数据的简要信息作为示例
+                if matches:
+                    print(f"查询结果示例 (前{min(3, len(matches))}条):")
+                    for i, match in enumerate(matches[:3]):
+                        div = match.get("Div", "N/A")
+                        date = match.get("Date", "N/A")
+                        home_team = match.get("HomeTeam", "N/A")
+                        away_team = match.get("AwayTeam", "N/A")
+                        print(
+                            f"  数据{i + 1}: 联赛={div}, 日期={date}, 主队={home_team}, 客队={away_team}"
+                        )
+
                 return matches
             except Exception as e:
                 logger.error(f"查询MongoDB比赛数据时出错: {e}")
+                print(f"MongoDB查询出错: {e}")
                 # 如果数据库查询失败，使用模拟数据
                 return self._filter_mock_data(filters, limit)
         else:

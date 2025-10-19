@@ -14,6 +14,8 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 from .match_ranking import MatchRankingSystem
 from .team_name_mapper import TeamNameMapper
+from .league_mapper import get_all_leagues, get_league_code
+from .match_data import MatchDataManager
 
 
 class RankingSystemMainWindow(QMainWindow):
@@ -25,16 +27,64 @@ class RankingSystemMainWindow(QMainWindow):
         self.ranking_system = MatchRankingSystem()
         # 初始化队伍名映射器
         self.team_mapper = TeamNameMapper()
-        # 加载并处理数据
-        self._load_and_process_data()
+        # 初始化比赛数据管理器，使用正确的数据库名称hao_football
+        self.match_data_manager = MatchDataManager(
+            db_name="hao_football", collection_name="matches"
+        )
+        # 当前选中的联赛
+        self.current_league = None
         # 初始化界面
         self.init_ui()
+        # 初始不加载数据，等待用户选择联赛
 
-    def _load_and_process_data(self):
-        """加载并处理比赛数据"""
+    def _load_and_process_data(self, league_name=None):
+        """加载并处理指定联赛的比赛数据"""
         try:
-            # 处理所有比赛并计算排名
-            self.ranking_system.process_all_matches()
+            # 重置排名系统的算法实例
+            self.ranking_system.elo_algorithm = (
+                self.ranking_system.elo_algorithm.__class__()
+            )
+            self.ranking_system.openskill_algorithm = (
+                self.ranking_system.openskill_algorithm.__class__()
+            )
+
+            if league_name:
+                # 根据联赛名称获取联赛代码
+                league_code = get_league_code(league_name)
+                print(f"正在加载联赛: {league_name} ({league_code})")
+
+                # 从match_data_manager获取指定联赛的数据，使用正确的过滤条件格式
+                matches = self.match_data_manager.get_matches({"Div": league_code})
+                print(f"成功获取 {len(matches)} 场比赛数据")
+
+                # 处理比赛数据
+                for match in matches:
+                    if (
+                        "HomeTeam" in match
+                        and "AwayTeam" in match
+                        and "FTHG" in match
+                        and "FTAG" in match
+                    ):
+                        home = match["HomeTeam"]
+                        away = match["AwayTeam"]
+                        home_score = int(match["FTHG"])
+                        away_score = int(match["FTAG"])
+
+                        # 使用两种算法处理同一场比赛
+                        self.ranking_system.elo_algorithm.process_match(
+                            home, away, home_score, away_score
+                        )
+                        self.ranking_system.openskill_algorithm.process_match(
+                            home, away, home_score, away_score
+                        )
+            else:
+                # 处理所有比赛
+                self.ranking_system.process_all_matches()
+
+            # 更新表格
+            selected_algorithm = self.algorithm_combo.currentText()
+            self.update_ranking_table(selected_algorithm)
+
         except Exception as e:
             print(f"加载数据时出错: {e}")
 
@@ -59,14 +109,34 @@ class RankingSystemMainWindow(QMainWindow):
 
         # 创建算法选择区域
         algorithm_layout = QHBoxLayout()
+
+        # 算法选择部分
         algorithm_label = QLabel("排名比赛算法:")
         self.algorithm_combo = QComboBox()
         self.algorithm_combo.addItems(["Open Skill", "Elo"])
         self.algorithm_combo.currentIndexChanged.connect(self.on_algorithm_changed)
 
+        # 联赛选择部分
+        league_label = QLabel("选择联赛:")
+        self.league_combo = QComboBox()
+
+        # 首先添加"选择联赛"作为默认选项
+        self.league_combo.addItem("选择联赛")
+
+        # 获取所有联赛并添加到下拉框
+        leagues = get_all_leagues()
+        league_names = list(leagues.keys())
+        self.league_combo.addItems(league_names)
+
+        # 添加选项改变事件的监听器
+        self.league_combo.currentIndexChanged.connect(self.on_league_changed)
+
         algorithm_layout.addWidget(algorithm_label)
         algorithm_layout.addWidget(self.algorithm_combo)
-        algorithm_layout.addStretch()  # 添加拉伸空间使其靠左
+        algorithm_layout.addSpacing(20)  # 添加间距
+        algorithm_layout.addWidget(league_label)
+        algorithm_layout.addWidget(self.league_combo)
+        algorithm_layout.addStretch()  # 添加拉伸空间
         main_layout.addLayout(algorithm_layout)
 
         # 创建排名表格
@@ -115,6 +185,21 @@ class RankingSystemMainWindow(QMainWindow):
         """算法选择改变事件处理函数"""
         selected_algorithm = self.algorithm_combo.currentText()
         self.update_ranking_table(selected_algorithm)
+
+    def on_league_changed(self, index):
+        """联赛选择改变事件处理函数"""
+        selected_league = self.league_combo.currentText()
+
+        # 如果选择的是默认选项"选择联赛"，则不加载数据
+        if selected_league == "选择联赛":
+            self.current_league = None
+            # 清空表格
+            self.ranking_table.setRowCount(0)
+        else:
+            # 记录当前选中的联赛
+            self.current_league = selected_league
+            # 加载并处理选中联赛的数据
+            self._load_and_process_data(selected_league)
 
     def update_ranking_table(self, algorithm_type):
         """更新排名表格数据"""
