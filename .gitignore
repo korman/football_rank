@@ -10,3 +10,5 @@ wheels/
 .venv
 
 football_data
+db/data
+*.log

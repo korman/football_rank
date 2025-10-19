@@ -7,5 +7,6 @@ requires-python = ">=3.13"
 dependencies = [
     "openskill>=6.1.3",
     "pandas>=2.3.3",
+    "pymongo>=4.15.3",
     "pyqt6>=6.9.1",
 ]
