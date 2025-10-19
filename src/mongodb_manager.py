@@ -199,7 +199,52 @@ class MongoDBManager:
         Returns:
             bool: MongoDB服务是否正在运行
         """
-        if self.mongo_proc is None:
-            return False
+        # 检查进程是否存在且运行中
+        if self.mongo_proc is not None:
+            return self.mongo_proc.poll() is None
 
-        return self.mongo_proc.poll() is None
+        # 检查端口是否开放
+        return self._check_port("localhost", 27017)
+
+    def create_match_data_manager(self, db_name, collection_name):
+        """
+        创建比赛数据管理实例
+        注意：此方法需要在MongoDB服务启动后调用
+
+        Args:
+            db_name (str): 数据库名称
+            collection_name (str): 集合名称
+
+        Returns:
+            MatchDataManager: 比赛数据管理实例，如果创建失败返回None
+        """
+        try:
+            # 确保MongoDB服务已启动
+            if not self.is_running():
+                logger.warning("MongoDB服务未运行，尝试启动...")
+                if not self.start_mongodb():
+                    logger.error("MongoDB服务启动失败，无法创建MatchDataManager")
+                    return None
+
+            # 延迟导入以避免循环依赖
+            from .match_data import MatchDataManager
+
+            # 创建并返回MatchDataManager实例
+            match_data_manager = MatchDataManager(db_name, collection_name)
+
+            # 验证创建是否成功
+            if match_data_manager.is_connected():
+                logger.info(
+                    f"成功创建MatchDataManager实例，数据库: {db_name}，集合: {collection_name}"
+                )
+                return match_data_manager
+            else:
+                logger.error("MatchDataManager创建成功但连接失败")
+                return None
+
+        except ImportError as e:
+            logger.error(f"导入MatchDataManager失败: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"创建MatchDataManager实例时发生异常: {e}")
+            return None
