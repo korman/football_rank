@@ -1,6 +1,6 @@
 class TeamNameMapper:
     def __init__(self):
-        # 中英文队名映射字典，基于您提供的英超和西甲列表
+        # 中英文队名映射字典，基于您提供的英超、西甲、德甲列表
         self.mapping = {
             # 原有英超球队
             "Liverpool": "利物浦",
@@ -80,7 +80,7 @@ class TeamNameMapper:
             "Cordoba": "科尔多巴",
             "Hercules": "赫库莱斯",
             "Oviedo": "奥维耶多",
-            # 新增德甲球队（基于您提供的15年数据列表）
+            # 原有德甲球队
             "Werder Bremen": "云达不莱梅",
             "Hannover": "汉诺威96",
             "Augsburg": "奥格斯堡",
@@ -112,6 +112,46 @@ class TeamNameMapper:
             "Bochum": "波鸿",
             "Bielefeld": "比勒费尔德",
             "Kaiserslautern": "凯泽斯劳滕",
+            # 新增意甲球队（基于您提供的15年数据列表）
+            "Milan": "AC米兰",
+            "Lazio": "拉齐奥",
+            "Cagliari": "卡利亚里",
+            "Roma": "罗马",
+            "Inter": "国际米兰",
+            "Palermo": "巴勒莫",
+            "Napoli": "那不勒斯",
+            "Cesena": "切塞纳",
+            "Udinese": "乌迪内斯",
+            "Lecce": "莱切",
+            "Bologna": "博洛尼亚",
+            "Fiorentina": "佛罗伦萨",
+            "Torino": "都灵",
+            "Atalanta": "亚特兰大",
+            "Chievo": "基耶沃",
+            "Parma": "帕尔马",
+            "Verona": "维罗纳",
+            "Sassuolo": "萨索洛",
+            "Sampdoria": "桑普多利亚",
+            "Juventus": "尤文图斯",
+            "Pescara": "佩斯卡拉",
+            "Brescia": "布雷西亚",
+            "Empoli": "恩波利",
+            "Genoa": "热那亚",
+            "Novara": "诺瓦拉",
+            "Siena": "锡耶纳",
+            "Cremonese": "克雷莫内斯",
+            "Salernitana": "萨勒尼塔纳",
+            "Bari": "巴里",
+            "Catania": "卡塔尼亚",
+            "Carpi": "卡尔皮",
+            "Frosinone": "弗罗西诺内",
+            "Crotone": "克罗托内",
+            "Benevento": "贝内文托",
+            "Spezia": "斯佩齐亚",
+            "Venezia": "威尼斯",
+            "Spal": "斯帕尔",
+            "Livorno": "利沃诺",
+            "Monza": "蒙扎",
         }
 
     def get_chinese_name(self, english_name):
@@ -127,7 +167,11 @@ if __name__ == "__main__":
     print(mapper.get_chinese_name("Barcelona"))  # 输出: 巴塞罗那
     print(mapper.get_chinese_name("Real Madrid"))  # 输出: 皇家马德里
     print(mapper.get_chinese_name("Unknown"))  # 输出: Unknown (不存在时返回原名)
-    # 新增德甲示例
+    # 德甲示例
     print(mapper.get_chinese_name("Bayern Munich"))  # 输出: 拜仁慕尼黑
     print(mapper.get_chinese_name("Dortmund"))  # 输出: 多特蒙德
     print(mapper.get_chinese_name("Schalke 04"))  # 输出: 沙尔克04
+    # 新增意甲示例
+    print(mapper.get_chinese_name("Juventus"))  # 输出: 尤文图斯
+    print(mapper.get_chinese_name("Inter"))  # 输出: 国际米兰
+    print(mapper.get_chinese_name("Roma"))  # 输出: 罗马
