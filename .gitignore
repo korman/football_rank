@@ -12,4 +12,3 @@ wheels/
 football_data
 db/data
 *.log
-match_data.db
