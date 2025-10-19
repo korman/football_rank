@@ -1,7 +1,7 @@
 import sys
 from src.main_window import RankingSystemMainWindow
 from PyQt6.QtWidgets import QApplication
-from src.mongodb_manager import MongoDBManager
+from PyQt6.QtGui import QIcon
 import os
 import logging
 
@@ -12,11 +12,7 @@ logger = logging.getLogger(__name__)
 
 def main():
     """主函数，启动浩子比赛排名系统界面"""
-    mongo_manager = MongoDBManager()
-    mongo_started = mongo_manager.start_mongodb()
-
-    if not mongo_started:
-        logger.warning("MongoDB服务启动失败，应用程序将继续运行")
+    logger.info("启动浩子比赛排名系统")
 
     # 创建Qt应用程序
     app = QApplication(sys.argv)

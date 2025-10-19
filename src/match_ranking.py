@@ -183,10 +183,3 @@ class MatchRankingSystem:
         print("\nElo Rankings (by rating descending):")
         for rank, (team, rating) in enumerate(self.get_elo_rankings(), start=1):
             print(f"{rank}. {team}: elo={rating:.2f}")
-
-
-if __name__ == "__main__":
-    # 示例用法
-    ranking_system = MatchRankingSystem()
-    ranking_system.process_all_matches()
-    ranking_system.print_rankings()

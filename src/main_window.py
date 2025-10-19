@@ -10,12 +10,17 @@ from PyQt6.QtWidgets import (
     QTableWidget,
     QTableWidgetItem,
     QHeaderView,
+    QPushButton,
+    QFileDialog,
+    QMessageBox,
 )
+from .sqlite_importer import sqlite_importer
 from PyQt6.QtCore import Qt
 from .match_ranking import MatchRankingSystem
 from .team_name_mapper import TeamNameMapper
 from .league_mapper import get_all_leagues, get_league_code
 from .match_data import MatchDataManager
+from .team_manager import TeamManager
 
 
 class RankingSystemMainWindow(QMainWindow):
@@ -27,10 +32,10 @@ class RankingSystemMainWindow(QMainWindow):
         self.ranking_system = MatchRankingSystem()
         # 初始化队伍名映射器
         self.team_mapper = TeamNameMapper()
-        # 初始化比赛数据管理器，使用正确的数据库名称hao_football
-        self.match_data_manager = MatchDataManager(
-            db_name="hao_football", collection_name="matches"
-        )
+        # 初始化SQLite数据库连接
+        self.match_data_manager = MatchDataManager()
+        # 初始化队伍管理器
+        self.team_manager = TeamManager()
         # 当前选中的联赛
         self.current_league = None
         # 初始化界面
@@ -69,6 +74,17 @@ class RankingSystemMainWindow(QMainWindow):
                         away = match["AwayTeam"]
                         home_score = int(match["FTHG"])
                         away_score = int(match["FTAG"])
+
+                        # 使用已经确定的联赛代码
+                        league_code = get_league_code(league_name)
+
+                        # 首先通过TeamManager创建或获取队伍，并设置联赛信息
+                        self.team_manager.create_team(home, league=league_code)
+                        self.team_manager.create_team(away, league=league_code)
+
+                        # 更新队伍的比赛次数
+                        self.team_manager.increment_match_count(home)
+                        self.team_manager.increment_match_count(away)
 
                         # 使用两种算法处理同一场比赛
                         self.ranking_system.elo_algorithm.process_match(
@@ -131,11 +147,17 @@ class RankingSystemMainWindow(QMainWindow):
         # 添加选项改变事件的监听器
         self.league_combo.currentIndexChanged.connect(self.on_league_changed)
 
+        # 添加导入数据按钮
+        import_button = QPushButton("导入数据")
+        import_button.clicked.connect(self.on_import_data)
+
         algorithm_layout.addWidget(algorithm_label)
         algorithm_layout.addWidget(self.algorithm_combo)
         algorithm_layout.addSpacing(20)  # 添加间距
         algorithm_layout.addWidget(league_label)
         algorithm_layout.addWidget(self.league_combo)
+        algorithm_layout.addSpacing(20)  # 添加间距
+        algorithm_layout.addWidget(import_button)
         algorithm_layout.addStretch()  # 添加拉伸空间
         main_layout.addLayout(algorithm_layout)
 
@@ -237,28 +259,60 @@ class RankingSystemMainWindow(QMainWindow):
             self.ranking_table.setItem(i, 3, QTableWidgetItem(str(matches)))
 
     def load_elo_rankings(self):
-        """加载Elo排名数据"""
+        """加载Elo排名数据，使用TeamManager获取指定联赛的队伍"""
         try:
-            elo_rankings = self.ranking_system.get_elo_rankings()
-            # 对于Elo算法，假设稳定性是固定值，比赛场次暂时设为100
-            processed_rankings = [
-                (team, rating, 1.0, 100) for team, rating in elo_rankings
-            ]
+            if not self.current_league:
+                return []
+
+            # 使用TeamManager获取当前联赛的所有队伍
+            league_teams = self.team_manager.get_teams_by_league(self.current_league)
+
+            # 获取所有队伍的Elo排名并构建字典
+            all_elo_rankings = dict(self.ranking_system.get_elo_rankings())
+
+            # 构建排名数据
+            processed_rankings = []
+            for team in league_teams:
+                # 从排名字典中获取队伍的Elo评分，如果不存在则使用队伍默认值
+                elo_rating = all_elo_rankings.get(team.name, team.elo)
+                processed_rankings.append(
+                    (team.name, elo_rating, 1.0, team.match_count)
+                )
+
+            # 按Elo评分降序排序
+            processed_rankings.sort(key=lambda x: x[1], reverse=True)
             return processed_rankings
         except Exception as e:
             print(f"加载Elo排名出错: {e}")
             return []
 
     def load_openskill_rankings(self):
-        """加载OpenSkill排名数据"""
+        """加载OpenSkill排名数据，使用TeamManager获取指定联赛的队伍"""
         try:
-            openskill_rankings = self.ranking_system.get_openskill_rankings()
+            if not self.current_league:
+                return []
+
+            # 使用TeamManager获取当前联赛的所有队伍
+            league_teams = self.team_manager.get_teams_by_league(self.current_league)
             min_sigma = 1.5  # 最小sigma值用于稳定性计算
-            # OpenSkill算法中，将mu值乘以25后取整作为积分，使用新公式计算稳定性
+
+            # 获取所有队伍的OpenSkill排名并构建字典
+            all_openskill_rankings = dict(self.ranking_system.get_openskill_rankings())
+
+            # 构建排名数据
             processed_rankings = []
-            for team, rating in openskill_rankings:
-                mu_value = rating[0].mu
-                sigma_value = rating[0].sigma
+            for team in league_teams:
+                # 从排名字典中获取队伍的OpenSkill评分，如果不存在则为None
+                openskill_rating = all_openskill_rankings.get(team.name)
+
+                if openskill_rating:
+                    # 如果ranking_system中有评分，使用该评分
+                    mu_value = openskill_rating[0].mu
+                    sigma_value = openskill_rating[0].sigma
+                else:
+                    # 否则使用队伍对象中的默认值
+                    mu_value = team.mu
+                    sigma_value = team.sigma
 
                 # 计算积分：mu值乘以25后取整
                 score = int(mu_value * 25)
@@ -268,12 +322,67 @@ class RankingSystemMainWindow(QMainWindow):
                 # 四舍五入处理并添加%符号
                 stability = f"{round(stability_value)}%"
 
-                processed_rankings.append((team, score, stability, 100))
+                processed_rankings.append(
+                    (team.name, score, stability, team.match_count)
+                )
 
+            # 按积分降序排序
+            processed_rankings.sort(key=lambda x: x[1], reverse=True)
             return processed_rankings
         except Exception as e:
             print(f"加载OpenSkill排名出错: {e}")
             return []
+
+    def on_import_data(self):
+        """
+        导入数据按钮点击事件处理函数
+        打开文件选择对话框，支持多选CSV文件，并调用sqlite_importer处理选中的文件
+        """
+        # 打开文件选择对话框，设置多选和文件筛选
+        file_paths, _ = QFileDialog.getOpenFileNames(
+            self, "选择CSV文件", "", "CSV文件 (*.csv);;所有文件 (*)"
+        )
+
+        # 如果用户选择了文件
+        if file_paths:
+            # 显示导入开始的消息
+            QMessageBox.information(
+                self, "导入开始", f"开始导入 {len(file_paths)} 个CSV文件..."
+            )
+
+            # 遍历所有选中的文件路径
+            total_imported = 0
+            total_skipped = 0
+
+            for file_path in file_paths:
+                try:
+                    # 调用sqlite_importer进行数据处理
+                    result = sqlite_importer.import_csv(file_path)
+
+                    if result["success"]:
+                        total_imported += result["imported_rows"]
+                        total_skipped += result["skipped_rows"]
+                        print(
+                            f"文件 {file_path} 导入成功: {result['imported_rows']} 行导入, {result['skipped_rows']} 行跳过"
+                        )
+                    else:
+                        error_msg = result.get("error", "未知错误")
+                        print(f"文件 {file_path} 导入失败: {error_msg}")
+                        QMessageBox.warning(
+                            self, "导入失败", f"文件 {file_path} 导入失败: {error_msg}"
+                        )
+                except Exception as e:
+                    print(f"处理文件 {file_path} 时出错: {str(e)}")
+                    QMessageBox.warning(
+                        self, "处理错误", f"处理文件 {file_path} 时出错: {str(e)}"
+                    )
+
+            # 显示导入完成的消息
+            QMessageBox.information(
+                self,
+                "导入完成",
+                f"所有文件导入完成!\n总计导入: {total_imported} 行\n跳过重复: {total_skipped} 行",
+            )
 
 
 # 主窗口类已定义，主函数已移至项目根目录的main.py文件中
