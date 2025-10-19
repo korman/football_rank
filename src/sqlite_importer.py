@@ -96,7 +96,7 @@ class SQLiteImporter:
                     HTR TEXT,
                     Referee TEXT,
                     HS TEXT,
-                    "AS" TEXT,  -- 引用以避免 SQL 关键字冲突
+                    [AS] TEXT,  -- 使用方括号避免 SQL 关键字冲突
                     HST TEXT,
                     AST TEXT,
                     HF TEXT,
@@ -148,8 +148,15 @@ class SQLiteImporter:
 
         try:
             # 检查数据库连接是否有效
-            if not self.conn or self.conn.closed:
+            if not self.conn:
                 self._init_db()
+            else:
+                # 尝试执行简单的SQL语句来测试连接是否仍然有效
+                try:
+                    self.cursor.execute("SELECT 1")
+                except (sqlite3.OperationalError, AttributeError):
+                    # 如果连接已关闭或cursor无效，重新初始化
+                    self._init_db()
 
             # 检查CSV文件是否存在
             if not os.path.exists(csv_file_path):
@@ -195,10 +202,17 @@ class SQLiteImporter:
                         "AR": row.get("AR", ""),
                     }
 
-                    # 构建插入语句
-                    columns = ", ".join(data.keys())
+                    # 构建插入语句，处理关键字字段
+                    columns = []
+                    for col in data.keys():
+                        # 对AS关键字字段使用方括号
+                        if col == "AS":
+                            columns.append("[AS]")
+                        else:
+                            columns.append(col)
+                    columns_str = ", ".join(columns)
                     placeholders = ", ".join(["?" for _ in data])
-                    insert_sql = f"INSERT OR IGNORE INTO matches ({columns}) VALUES ({placeholders})"
+                    insert_sql = f"INSERT OR IGNORE INTO matches ({columns_str}) VALUES ({placeholders})"
 
                     # 执行插入
                     before_count = self.cursor.execute("SELECT changes()").fetchone()[0]
@@ -245,9 +259,13 @@ class SQLiteImporter:
         """
         关闭数据库连接
         """
-        if self.conn and not self.conn.closed:
-            self.conn.close()
-            logger.info("SQLite数据库连接已关闭")
+        if self.conn:
+            try:
+                self.conn.close()
+                logger.info("SQLite数据库连接已关闭")
+            except Exception:
+                # 忽略关闭时的异常，确保连接被释放
+                pass
 
     def __del__(self):
         """

@@ -10,7 +10,11 @@ from PyQt6.QtWidgets import (
     QTableWidget,
     QTableWidgetItem,
     QHeaderView,
+    QPushButton,
+    QFileDialog,
+    QMessageBox,
 )
+from .sqlite_importer import sqlite_importer
 from PyQt6.QtCore import Qt
 from .match_ranking import MatchRankingSystem
 from .team_name_mapper import TeamNameMapper
@@ -131,11 +135,17 @@ class RankingSystemMainWindow(QMainWindow):
         # 添加选项改变事件的监听器
         self.league_combo.currentIndexChanged.connect(self.on_league_changed)
 
+        # 添加导入数据按钮
+        import_button = QPushButton("导入数据")
+        import_button.clicked.connect(self.on_import_data)
+
         algorithm_layout.addWidget(algorithm_label)
         algorithm_layout.addWidget(self.algorithm_combo)
         algorithm_layout.addSpacing(20)  # 添加间距
         algorithm_layout.addWidget(league_label)
         algorithm_layout.addWidget(self.league_combo)
+        algorithm_layout.addSpacing(20)  # 添加间距
+        algorithm_layout.addWidget(import_button)
         algorithm_layout.addStretch()  # 添加拉伸空间
         main_layout.addLayout(algorithm_layout)
 
@@ -274,6 +284,57 @@ class RankingSystemMainWindow(QMainWindow):
         except Exception as e:
             print(f"加载OpenSkill排名出错: {e}")
             return []
+
+    def on_import_data(self):
+        """
+        导入数据按钮点击事件处理函数
+        打开文件选择对话框，支持多选CSV文件，并调用sqlite_importer处理选中的文件
+        """
+        # 打开文件选择对话框，设置多选和文件筛选
+        file_paths, _ = QFileDialog.getOpenFileNames(
+            self, "选择CSV文件", "", "CSV文件 (*.csv);;所有文件 (*)"
+        )
+
+        # 如果用户选择了文件
+        if file_paths:
+            # 显示导入开始的消息
+            QMessageBox.information(
+                self, "导入开始", f"开始导入 {len(file_paths)} 个CSV文件..."
+            )
+
+            # 遍历所有选中的文件路径
+            total_imported = 0
+            total_skipped = 0
+
+            for file_path in file_paths:
+                try:
+                    # 调用sqlite_importer进行数据处理
+                    result = sqlite_importer.import_csv(file_path)
+
+                    if result["success"]:
+                        total_imported += result["imported_rows"]
+                        total_skipped += result["skipped_rows"]
+                        print(
+                            f"文件 {file_path} 导入成功: {result['imported_rows']} 行导入, {result['skipped_rows']} 行跳过"
+                        )
+                    else:
+                        error_msg = result.get("error", "未知错误")
+                        print(f"文件 {file_path} 导入失败: {error_msg}")
+                        QMessageBox.warning(
+                            self, "导入失败", f"文件 {file_path} 导入失败: {error_msg}"
+                        )
+                except Exception as e:
+                    print(f"处理文件 {file_path} 时出错: {str(e)}")
+                    QMessageBox.warning(
+                        self, "处理错误", f"处理文件 {file_path} 时出错: {str(e)}"
+                    )
+
+            # 显示导入完成的消息
+            QMessageBox.information(
+                self,
+                "导入完成",
+                f"所有文件导入完成!\n总计导入: {total_imported} 行\n跳过重复: {total_skipped} 行",
+            )
 
 
 # 主窗口类已定义，主函数已移至项目根目录的main.py文件中
