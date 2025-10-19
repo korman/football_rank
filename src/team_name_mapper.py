@@ -44,7 +44,7 @@ class TeamNameMapper:
             "Blackburn": "布莱克本",
             "Birmingham": "伯明翰",
             "Blackpool": "布莱克浦",
-            # 新增西甲球队
+            # 原有西甲球队
             "Barcelona": "巴塞罗那",
             "Valencia": "瓦伦西亚",
             "Sociedad": "皇家社会",
@@ -80,6 +80,38 @@ class TeamNameMapper:
             "Cordoba": "科尔多巴",
             "Hercules": "赫库莱斯",
             "Oviedo": "奥维耶多",
+            # 新增德甲球队（基于您提供的15年数据列表）
+            "Werder Bremen": "云达不莱梅",
+            "Hannover": "汉诺威96",
+            "Augsburg": "奥格斯堡",
+            "M'gladbach": "门兴格拉德巴赫",
+            "Hoffenheim": "霍芬海姆",
+            "Hamburg": "汉堡",
+            "Leverkusen": "勒沃库森",
+            "Stuttgart": "斯图加特",
+            "Mainz": "美因茨",
+            "Freiburg": "弗赖堡",
+            "Schalke 04": "沙尔克04",
+            "Wolfsburg": "沃尔夫斯堡",
+            "Hertha": "赫塔柏林",
+            "RB Leipzig": "红牛莱比锡",
+            "Dortmund": "多特蒙德",
+            "Union Berlin": "柏林联合",
+            "Fortuna Dusseldorf": "杜塞尔多夫",
+            "Ein Frankfurt": "法兰克福",
+            "Bayern Munich": "拜仁慕尼黑",
+            "Braunschweig": "不伦瑞克",
+            "Nurnberg": "纽伦堡",
+            "Paderborn": "帕德博恩",
+            "Ingolstadt": "因戈尔施塔特",
+            "FC Koln": "科隆",
+            "St Pauli": "圣保利",
+            "Darmstadt": "达姆施塔特",
+            "Heidenheim": "海登海姆",
+            "Greuther Furth": "格罗特赫恩富特",
+            "Bochum": "波鸿",
+            "Bielefeld": "比勒费尔德",
+            "Kaiserslautern": "凯泽斯劳滕",
         }
 
     def get_chinese_name(self, english_name):
@@ -95,3 +127,7 @@ if __name__ == "__main__":
     print(mapper.get_chinese_name("Barcelona"))  # 输出: 巴塞罗那
     print(mapper.get_chinese_name("Real Madrid"))  # 输出: 皇家马德里
     print(mapper.get_chinese_name("Unknown"))  # 输出: Unknown (不存在时返回原名)
+    # 新增德甲示例
+    print(mapper.get_chinese_name("Bayern Munich"))  # 输出: 拜仁慕尼黑
+    print(mapper.get_chinese_name("Dortmund"))  # 输出: 多特蒙德
+    print(mapper.get_chinese_name("Schalke 04"))  # 输出: 沙尔克04

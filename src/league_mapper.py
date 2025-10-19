@@ -5,7 +5,7 @@
 """
 
 # 联赛名称映射字典
-LEAGUE_MAP = {"英超": "E0", "西甲": "SP1"}
+LEAGUE_MAP = {"英超": "E0", "西甲": "SP1", "德甲": "D1"}
 
 
 def get_league_code(chinese_name):
