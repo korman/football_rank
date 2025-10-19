@@ -1,7 +1,8 @@
 class TeamNameMapper:
     def __init__(self):
-        # 中英文队名映射字典，基于您提供的列表
+        # 中英文队名映射字典，基于您提供的英超和西甲列表
         self.mapping = {
+            # 原有英超球队
             "Liverpool": "利物浦",
             "Man City": "曼城",
             "Arsenal": "阿森纳",
@@ -43,6 +44,42 @@ class TeamNameMapper:
             "Blackburn": "布莱克本",
             "Birmingham": "伯明翰",
             "Blackpool": "布莱克浦",
+            # 新增西甲球队
+            "Barcelona": "巴塞罗那",
+            "Valencia": "瓦伦西亚",
+            "Sociedad": "皇家社会",
+            "Ath Bilbao": "毕尔巴鄂竞技",
+            "Sevilla": "塞维利亚",
+            "Ath Madrid": "马德里竞技",
+            "Real Madrid": "皇家马德里",
+            "Villarreal": "比利亚雷阿尔",
+            "Getafe": "赫塔费",
+            "Celta": "塞尔塔",
+            "Espanol": "西班牙人",
+            "Betis": "皇家贝蒂斯",
+            "Levante": "莱万特",
+            "Osasuna": "奥萨苏纳",
+            "Vallecano": "巴列卡诺",
+            "Granada": "格拉纳达",
+            "Mallorca": "马洛卡",
+            "Alaves": "阿拉维斯",
+            "Malaga": "马拉加",
+            "Valladolid": "巴拉多利德",
+            "Eibar": "埃瓦尔",
+            "La Coruna": "拉科鲁尼亚",
+            "Girona": "赫罗纳",
+            "Elche": "埃尔切",
+            "Las Palmas": "拉斯帕尔马斯",
+            "Leganes": "莱加内斯",
+            "Almeria": "阿尔梅里亚",
+            "Cadiz": "加的斯",
+            "Sp Gijon": "希洪竞技",
+            "Zaragoza": "萨拉戈萨",
+            "Huesca": "韦斯卡",
+            "Santander": "桑坦德竞技",
+            "Cordoba": "科尔多巴",
+            "Hercules": "赫库莱斯",
+            "Oviedo": "奥维耶多",
         }
 
     def get_chinese_name(self, english_name):
@@ -55,4 +92,6 @@ if __name__ == "__main__":
     mapper = TeamNameMapper()
     print(mapper.get_chinese_name("Liverpool"))  # 输出: 利物浦
     print(mapper.get_chinese_name("Man City"))  # 输出: 曼城
+    print(mapper.get_chinese_name("Barcelona"))  # 输出: 巴塞罗那
+    print(mapper.get_chinese_name("Real Madrid"))  # 输出: 皇家马德里
     print(mapper.get_chinese_name("Unknown"))  # 输出: Unknown (不存在时返回原名)

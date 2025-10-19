@@ -127,32 +127,14 @@ class MatchRankingSystem:
         # 查找所有CSV文件
         files = glob.glob(os.path.join(self.data_dir, "E0 *.csv"))
 
-        # 添加调试信息：打印找到的文件数量
-        print(f"找到 {len(files)} 个比赛数据CSV文件")
-        print("文件列表:")
-        for i, file in enumerate(files, 1):
-            print(f"  {i}. {os.path.basename(file)}")
-
         # 按年份排序文件
         sorted_files = sorted(files, key=self._extract_year)
 
-        # 添加调试信息：打印排序后的文件列表
-        print("\n按年份排序后的文件列表:")
-        for i, file in enumerate(sorted_files, 1):
-            print(f"  {i}. {os.path.basename(file)}")
-
         # 初始化并连接所有数据
         self.all_data = pd.DataFrame()
-        print("\n开始加载文件:")
         for file in sorted_files:
-            filename = os.path.basename(file)
-            print(f"  正在加载: {filename}")
             df_temp = pd.read_csv(file)
-            print(f"  已加载: {filename}, 包含 {len(df_temp)} 条记录")
             self.all_data = pd.concat([self.all_data, df_temp], ignore_index=True)
-
-        # 添加调试信息：打印总数据量
-        print(f"\n数据加载完成，总记录数: {len(self.all_data)}")
 
         # 转换日期并排序
         self.all_data["Date"] = pd.to_datetime(
