@@ -229,6 +229,21 @@ class MongoDBManager:
             # 延迟导入以避免循环依赖
             from .match_data import MatchDataManager
 
+            # 验证MongoDB数据库"hao_football"的"matches"集合中是否存在比赛数据
+            temp_manager = MatchDataManager("hao_football", "matches")
+            if temp_manager.is_connected():
+                matches = temp_manager.get_matches(limit=1)
+                has_match_data = len(matches) > 0
+                temp_manager.close()
+
+                if not has_match_data:
+                    logger.warning(
+                        "MongoDB数据库'hao_football'的'matches'集合中不存在比赛数据"
+                    )
+            else:
+                logger.warning("无法连接到MongoDB数据库'hao_football'的'matches'集合")
+                temp_manager.close()
+
             # 创建并返回MatchDataManager实例
             match_data_manager = MatchDataManager(db_name, collection_name)
 
