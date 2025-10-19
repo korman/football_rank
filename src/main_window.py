@@ -31,10 +31,8 @@ class RankingSystemMainWindow(QMainWindow):
         self.ranking_system = MatchRankingSystem()
         # 初始化队伍名映射器
         self.team_mapper = TeamNameMapper()
-        # 初始化比赛数据管理器，使用正确的数据库名称hao_football
-        self.match_data_manager = MatchDataManager(
-            db_name="hao_football", collection_name="matches"
-        )
+        # 初始化数据库连接 (SQLite版本)
+        self.match_data_manager = MatchDataManager()
         # 当前选中的联赛
         self.current_league = None
         # 初始化界面

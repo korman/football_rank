@@ -1,26 +1,18 @@
 """
 比赛数据管理类
-负责与MongoDB交互存储和检索比赛相关数据
+负责与SQLite交互存储和检索比赛相关数据
 """
 
 import logging
 import os
 import sys
+import sqlite3
 
 # 添加更全面的路径设置，确保能够找到必要的模块
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-# 尝试导入pymongo和league_mapper模块
-try:
-    from pymongo import MongoClient
-    from pymongo.errors import ConnectionFailure, OperationFailure
-
-    pymongo_available = True
-except ImportError:
-    print("警告: 无法导入pymongo模块，MongoDB功能将不可用")
-    pymongo_available = False
-
+# 尝试导入league_mapper模块
 try:
     from league_mapper import get_league_code
 
@@ -42,68 +34,76 @@ logger = logging.getLogger(__name__)
 class MatchDataManager:
     """
     比赛数据管理类，负责管理和操作比赛相关数据
-    通过MongoDB存储和检索比赛数据
+    通过SQLite存储和检索比赛数据
     """
 
-    def __init__(
-        self, db_name, collection_name, mongo_uri="mongodb://localhost:27017/"
-    ):
+    def __init__(self, db_name=None, collection_name=None):
         """
         初始化比赛数据管理器
 
         Args:
-            db_name (str): 数据库名称
-            collection_name (str): 集合名称
-            mongo_uri (str): MongoDB连接URI
+            db_name (str): 数据库名称 (兼容MongoDB接口，实际忽略)
+            collection_name (str): 集合名称 (兼容MongoDB接口，实际忽略)
         """
-        self.db_name = db_name
-        self.collection_name = collection_name
-        self.mongo_uri = mongo_uri
-        self.client = None
-        self.db = None
-        self.collection = None
-        self.mock_data = []  # 用于模拟数据
-
-        # 只有在pymongo可用时才尝试连接
-        if pymongo_available:
-            self._connect()
-        else:
-            print(f"警告: 由于pymongo模块不可用，无法连接到MongoDB数据库 '{db_name}'")
-            # 生成一些模拟数据用于演示
-            self._generate_mock_data()
+        # 项目根目录下的match_data.db文件
+        self.db_path = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "..", "match_data.db")
+        )
+        self.conn = None
+        self.cursor = None
+        self.mock_data = []  # 用于模拟数据（保留兼容性）
+        self._connect()
 
     def _connect(self):
         """
-        建立MongoDB连接
+        建立SQLite连接
 
         Returns:
             bool: 连接是否成功
         """
         try:
-            self.client = MongoClient(self.mongo_uri, serverSelectionTimeoutMS=5000)
-            self.client.server_info()  # 验证连接
-            self.db = self.client[self.db_name]
-            self.collection = self.db[self.collection_name]
-            logger.info(
-                f"成功连接到MongoDB数据库 '{self.db_name}' 的集合 '{self.collection_name}'"
-            )
+            # 检查数据库文件是否存在
+            db_exists = os.path.exists(self.db_path)
+
+            # 建立SQLite连接
+            self.conn = sqlite3.connect(self.db_path)
+            self.cursor = self.conn.cursor()
+
+            if not db_exists:
+                logger.info(f"创建新的SQLite数据库: {self.db_path}")
+            else:
+                logger.info(f"连接到现有SQLite数据库: {self.db_path}")
+
+            # 检查matches表是否存在，如果不存在，创建一个基础结构
+            self._check_table_exists()
+
+            # 保留生成模拟数据的逻辑以确保兼容性
+            self._generate_mock_data()
+
             return True
-        except ConnectionFailure as e:
-            logger.error(f"连接到MongoDB失败: {e}")
-            self.client = None
-            self.db = None
-            self.collection = None
-            # 连接失败时生成模拟数据
-            self._generate_mock_data()
-            return False
         except Exception as e:
-            logger.error(f"初始化MongoDB连接时发生异常: {e}")
-            self.client = None
-            self.db = None
-            self.collection = None
+            logger.error(f"初始化SQLite连接时出错: {e}")
+            self.conn = None
+            self.cursor = None
             # 连接失败时生成模拟数据
             self._generate_mock_data()
             return False
+
+    def _check_table_exists(self):
+        """
+        检查matches表是否存在，如果不存在则创建基础结构
+        """
+        try:
+            # 检查表是否存在
+            self.cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='matches'"
+            )
+            table_exists = self.cursor.fetchone() is not None
+
+            if not table_exists:
+                logger.warning("matches表不存在，生成的查询将返回空结果")
+        except Exception as e:
+            logger.error(f"检查matches表时出错: {e}")
 
     def _generate_mock_data(self):
         """
@@ -209,12 +209,12 @@ class MatchDataManager:
 
     def is_connected(self):
         """
-        检查是否已连接到MongoDB
+        检查是否已连接到SQLite
 
         Returns:
             bool: 是否已连接
         """
-        return self.client is not None
+        return self.conn is not None
 
     def save_match(self, match_data):
         """
@@ -224,18 +224,40 @@ class MatchDataManager:
             match_data (dict): 比赛数据字典
 
         Returns:
-            str: 保存的文档ID，如果失败返回None
+            str: 保存的记录ID，如果失败返回None
         """
         if not self.is_connected():
             if not self._connect():
                 return None
 
         try:
-            result = self.collection.insert_one(match_data)
-            logger.info(f"成功保存比赛数据，文档ID: {result.inserted_id}")
-            return str(result.inserted_id)
+            # 提取数据字段和值
+            keys = []
+            values = []
+            placeholders = []
+
+            for key, value in match_data.items():
+                # 处理关键字字段AS
+                col_name = "[AS]" if key == "AS" else key
+                keys.append(col_name)
+                values.append(value)
+                placeholders.append("?")
+
+            # 构建SQL语句
+            sql = f"INSERT INTO matches ({', '.join(keys)}) VALUES ({', '.join(placeholders)})"
+
+            # 执行插入
+            self.cursor.execute(sql, values)
+            self.conn.commit()
+
+            # 获取插入的ID
+            inserted_id = self.cursor.lastrowid
+            logger.info(f"成功保存比赛数据，记录ID: {inserted_id}")
+            return str(inserted_id)
         except Exception as e:
             logger.error(f"保存比赛数据时出错: {e}")
+            if self.conn:
+                self.conn.rollback()
             return None
 
     def save_matches(self, matches_data):
@@ -246,18 +268,44 @@ class MatchDataManager:
             matches_data (list): 比赛数据字典列表
 
         Returns:
-            list: 保存的文档ID列表，如果失败返回None
+            list: 保存的记录ID列表，如果失败返回None
         """
         if not self.is_connected():
             if not self._connect():
                 return None
 
         try:
-            result = self.collection.insert_many(matches_data)
-            logger.info(f"成功批量保存 {len(result.inserted_ids)} 条比赛数据")
-            return [str(id) for id in result.inserted_ids]
+            inserted_ids = []
+
+            # 逐条插入，SQLite的executemany对于不同结构的字典支持有限
+            for match_data in matches_data:
+                # 提取数据字段和值
+                keys = []
+                values = []
+                placeholders = []
+
+                for key, value in match_data.items():
+                    # 处理关键字字段AS
+                    col_name = "[AS]" if key == "AS" else key
+                    keys.append(col_name)
+                    values.append(value)
+                    placeholders.append("?")
+
+                # 构建SQL语句
+                sql = f"INSERT INTO matches ({', '.join(keys)}) VALUES ({', '.join(placeholders)})"
+
+                # 执行插入
+                self.cursor.execute(sql, values)
+                inserted_ids.append(str(self.cursor.lastrowid))
+
+            # 提交事务
+            self.conn.commit()
+            logger.info(f"成功批量保存 {len(inserted_ids)} 条比赛数据")
+            return inserted_ids
         except Exception as e:
             logger.error(f"批量保存比赛数据时出错: {e}")
+            if self.conn:
+                self.conn.rollback()
             return None
 
     def get_matches(self, filters=None, limit=None):
@@ -274,22 +322,55 @@ class MatchDataManager:
         # 如果连接可用，从数据库获取数据
         if self.is_connected():
             try:
-                query = filters or {}
                 # 输出检索命令到控制台
                 print(
-                    f"执行MongoDB查询: 数据库='{self.db_name}', 集合='{self.collection_name}', 查询条件={query}, 限制={limit if limit is not None else '无限制'}"
+                    f"执行SQLite查询: 数据库='{self.db_path}', 查询条件={filters}, 限制={limit if limit is not None else '无限制'}"
                 )
-                # 执行查询
+
+                # 构建SQL查询
+                query = "SELECT * FROM matches"
+                params = []
+
+                # 处理过滤条件
+                if filters:
+                    where_clauses = []
+                    for key, value in filters.items():
+                        # 处理关键字字段AS
+                        if key == "AS":
+                            key = "[AS]"
+                        where_clauses.append(f"{key} = ?")
+                        params.append(value)
+
+                    if where_clauses:
+                        query += " WHERE " + " AND ".join(where_clauses)
+
+                # 添加限制
                 if limit is not None:
-                    matches = list(self.collection.find(query).limit(limit))
-                else:
-                    matches = list(self.collection.find(query))
-                print(f"MongoDB查询结果: 找到{len(matches)}条数据")
-                logger.info(f"成功从MongoDB查询到 {len(matches)} 条比赛数据")
+                    query += f" LIMIT {limit}"
+
+                # 执行查询
+                self.cursor.execute(query, params)
+
+                # 获取列名
+                columns = [desc[0] for desc in self.cursor.description]
+
+                # 转换结果为字典列表
+                matches = []
+                for row in self.cursor.fetchall():
+                    match_dict = {}
+                    for i, col in enumerate(columns):
+                        # 移除方括号（如果有的话）
+                        if col.startswith("[") and col.endswith("]"):
+                            col = col[1:-1]
+                        match_dict[col] = row[i]
+                    matches.append(match_dict)
+
+                print(f"SQLite查询结果: 找到{len(matches)}条数据")
+                logger.info(f"成功从SQLite查询到 {len(matches)} 条比赛数据")
 
                 # 如果数据库查询成功但没有找到数据，也使用模拟数据
                 if not matches:
-                    print("MongoDB查询返回空结果，使用模拟数据...")
+                    print("SQLite查询返回空结果，使用模拟数据...")
                     return self._filter_mock_data(filters, limit)
 
                 # 输出前3条数据的简要信息作为示例
@@ -306,8 +387,8 @@ class MatchDataManager:
 
                 return matches
             except Exception as e:
-                logger.error(f"查询MongoDB比赛数据时出错: {e}")
-                print(f"MongoDB查询出错: {e}")
+                logger.error(f"查询SQLite比赛数据时出错: {e}")
+                print(f"SQLite查询出错: {e}")
                 # 如果数据库查询失败，使用模拟数据
                 return self._filter_mock_data(filters, limit)
         else:
@@ -361,15 +442,34 @@ class MatchDataManager:
                 return False
 
         try:
-            result = self.collection.update_one(
-                {"_id": match_id}, {"$set": update_data}
-            )
-            logger.info(
-                f"更新比赛数据，匹配到 {result.matched_count} 条，修改了 {result.modified_count} 条"
-            )
-            return result.modified_count > 0
+            # 构建更新字段
+            update_fields = []
+            params = []
+
+            for key, value in update_data.items():
+                # 处理关键字字段AS
+                col_name = "[AS]" if key == "AS" else key
+                update_fields.append(f"{col_name} = ?")
+                params.append(value)
+
+            # 添加ID参数
+            params.append(match_id)
+
+            # 构建SQL语句
+            sql = f"UPDATE matches SET {', '.join(update_fields)} WHERE id = ?"
+
+            # 执行更新
+            self.cursor.execute(sql, params)
+            self.conn.commit()
+
+            # 检查是否有更新
+            modified_count = self.cursor.rowcount
+            logger.info(f"更新比赛数据，修改了 {modified_count} 条记录")
+            return modified_count > 0
         except Exception as e:
             logger.error(f"更新比赛数据时出错: {e}")
+            if self.conn:
+                self.conn.rollback()
             return False
 
     def delete_match(self, match_id):
@@ -387,11 +487,18 @@ class MatchDataManager:
                 return False
 
         try:
-            result = self.collection.delete_one({"_id": match_id})
-            logger.info(f"删除比赛数据，匹配到并删除了 {result.deleted_count} 条")
-            return result.deleted_count > 0
+            # 执行删除
+            self.cursor.execute("DELETE FROM matches WHERE id = ?", (match_id,))
+            self.conn.commit()
+
+            # 检查是否有删除
+            deleted_count = self.cursor.rowcount
+            logger.info(f"删除比赛数据，匹配到并删除了 {deleted_count} 条记录")
+            return deleted_count > 0
         except Exception as e:
             logger.error(f"删除比赛数据时出错: {e}")
+            if self.conn:
+                self.conn.rollback()
             return False
 
     def create_index(self, keys, unique=False):
@@ -410,27 +517,60 @@ class MatchDataManager:
                 return False
 
         try:
-            self.collection.create_index(keys, unique=unique)
-            logger.info(f"成功创建索引: {keys}, 唯一: {unique}")
+            # 转换键格式为SQLite索引格式
+            if isinstance(keys, dict):
+                # 处理MongoDB格式的索引定义 {"field": 1}
+                index_fields = []
+                for field, order in keys.items():
+                    # 处理关键字字段AS
+                    col_name = "[AS]" if field == "AS" else field
+                    index_fields.append(f"{col_name} {'ASC' if order > 0 else 'DESC'}")
+                index_sql = f"CREATE {'UNIQUE' if unique else ''} INDEX idx_{'_'.join(keys.keys())} ON matches ({', '.join(index_fields)})"
+            elif isinstance(keys, list):
+                # 处理字段列表格式
+                index_fields = []
+                for field in keys:
+                    # 处理关键字字段AS
+                    if isinstance(field, tuple):  # 支持 (field, order) 格式
+                        field_name, order = field
+                        col_name = "[AS]" if field_name == "AS" else field_name
+                        index_fields.append(
+                            f"{col_name} {'ASC' if order > 0 else 'DESC'}"
+                        )
+                    else:  # 简单字段名
+                        col_name = "[AS]" if field == "AS" else field
+                        index_fields.append(col_name)
+                index_sql = f"CREATE {'UNIQUE' if unique else ''} INDEX idx_{'_'.join([f[0] if isinstance(f, tuple) else f for f in keys])} ON matches ({', '.join(index_fields)})"
+            else:
+                # 单个字段
+                field = keys
+                col_name = "[AS]" if field == "AS" else field
+                index_sql = f"CREATE {'UNIQUE' if unique else ''} INDEX idx_{field} ON matches ({col_name})"
+
+            # 执行索引创建
+            self.cursor.execute(index_sql)
+            self.conn.commit()
+            logger.info(f"成功创建SQLite索引: {keys}, 唯一: {unique}")
             return True
         except Exception as e:
             logger.error(f"创建索引时出错: {e}")
+            if self.conn:
+                self.conn.rollback()
             return False
 
     def close(self):
         """
-        关闭MongoDB连接
+        关闭SQLite连接
         """
-        if self.client:
+        if self.conn:
             try:
-                self.client.close()
-                logger.info("MongoDB连接已关闭")
+                self.conn.close()
+                logger.info("SQLite连接已关闭")
             except Exception as e:
-                logger.error(f"关闭MongoDB连接时出错: {e}")
+                logger.error(f"关闭SQLite连接时出错: {e}")
             finally:
-                self.client = None
-                self.db = None
-                self.collection = None
+                self.conn = None
+                self.cursor = None
 
     def __del__(self):
         """
@@ -438,77 +578,54 @@ class MatchDataManager:
         """
         self.close()
 
-    def get_league_matches(self, chinese_league_name, limit=100):
+    def get_league_matches(self, league_name, season=None, limit=None):
         """
-        根据中文联赛名称获取比赛数据
+        获取指定联赛的比赛数据
 
         Args:
-            chinese_league_name (str): 中文联赛名称，如"英超"、"西甲"
-            limit (int): 返回结果的最大数量
+            league_name (str): 联赛中文名称
+            season (str, optional): 赛季，格式如 "2023-24"
+            limit (int, optional): 返回结果数量限制
 
         Returns:
             list: 比赛数据列表
         """
-        # 获取联赛代码
-        league_code = get_league_code(chinese_league_name)
+        # 转换联赛中文名称为英文代码
+        league_code = get_league_code(league_name)
         if not league_code:
-            logger.error(f"未找到联赛'{chinese_league_name}'对应的代码")
+            logger.warning(f"未找到联赛: {league_name}")
             return []
 
-        logger.info(
-            f"正在查询联赛'{chinese_league_name}'（代码：{league_code}）的比赛数据"
-        )
+        logger.info(f"正在查询联赛'{league_name}'（代码：{league_code}）的比赛数据")
 
-        # 使用联赛代码筛选数据
-        return self.get_matches(filters={"Div": league_code}, limit=limit)
+        # 构建查询条件字典
+        query = {"Div": league_code}
+        if season:
+            query["Season"] = season
+
+        # 获取数据 - 直接传递查询字典给get_matches
+        return self.get_matches(query, limit=limit)
 
 
 if __name__ == "__main__":
-    # 配置日志
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    )
+    # 测试代码 - SQLite版本
+    manager = MatchDataManager()
 
-    try:
-        # 创建MatchDataManager实例
-        # 注意：这里使用默认的数据库和集合名称，实际使用时可能需要修改
-        match_manager = MatchDataManager(
-            db_name="football_data", collection_name="matches"
+    if manager.is_connected():
+        print("已成功连接到SQLite数据库")
+    else:
+        print("连接SQLite数据库失败")
+
+    # 测试获取英超比赛数据
+    league_name = "英超"
+    matches = manager.get_league_matches(league_name, limit=5)
+
+    print(f"获取到 {league_name} 的 {len(matches)} 条比赛数据：")
+    for match in matches:
+        print(
+            f"日期: {match.get('Date')}, 主队: {match.get('HomeTeam')}, 客队: {match.get('AwayTeam')}, 比分: {match.get('FTHG')}-{match.get('FTAG')}"
         )
 
-        # 查询英超比赛数据
-        league_name = "英超"
-        logger.info(f"开始查询{league_name}比赛数据...")
-
-        matches = match_manager.get_league_matches(league_name, limit=100)
-
-        if matches:
-            logger.info(f"成功获取到{len(matches)}条{league_name}比赛数据")
-
-            # 打印前100条数据作为调试信息
-            logger.info(
-                f"\n=== 调试信息：前{min(100, len(matches))}条{league_name}比赛数据 ==="
-            )
-
-            for i, match in enumerate(matches[:100], 1):
-                # 提取关键信息打印
-                match_info = {
-                    "日期": match.get("Date", "未知"),
-                    "主队": match.get("HomeTeam", "未知"),
-                    "客队": match.get("AwayTeam", "未知"),
-                    "比分": f"{match.get('FTHG', 0)}-{match.get('FTAG', 0)}",
-                    "半场比分": f"{match.get('HTHG', 0)}-{match.get('HTAG', 0)}",
-                    "结果": match.get("FTR", "未知"),
-                }
-                logger.info(f"\n比赛 {i}: {match_info}")
-        else:
-            logger.warning(f"未找到{league_name}的比赛数据")
-
-    except Exception as e:
-        logger.error(f"执行过程中发生异常: {e}")
-    finally:
-        # 确保关闭连接
-        if "match_manager" in locals():
-            match_manager.close()
-            logger.info("程序执行完毕，已关闭数据库连接")
+    # 关闭连接
+    manager.close()
+    print("数据库连接已关闭")
