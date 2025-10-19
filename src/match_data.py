@@ -344,6 +344,9 @@ class MatchDataManager:
                     if where_clauses:
                         query += " WHERE " + " AND ".join(where_clauses)
 
+                # 添加排序：按日期从早到晚排序
+                query += " ORDER BY Date ASC"
+
                 # 添加限制
                 if limit is not None:
                     query += f" LIMIT {limit}"
@@ -372,6 +375,9 @@ class MatchDataManager:
                 if not matches:
                     print("SQLite查询返回空结果，使用模拟数据...")
                     return self._filter_mock_data(filters, limit)
+
+                # 确保返回的数据按日期从早到晚排序
+                matches.sort(key=lambda x: x.get("Date", ""))
 
                 # 输出前3条数据的简要信息作为示例
                 if matches:
@@ -422,6 +428,9 @@ class MatchDataManager:
                     filtered_matches.append(match)
                     if len(filtered_matches) >= limit:
                         break
+
+        # 按日期从早到晚排序模拟数据
+        filtered_matches.sort(key=lambda x: x.get("Date", ""))
 
         print(f"从模拟数据中过滤出{len(filtered_matches)}条符合条件的比赛")
         return filtered_matches
