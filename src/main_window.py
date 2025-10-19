@@ -32,7 +32,7 @@ class RankingSystemMainWindow(QMainWindow):
         self.ranking_system = MatchRankingSystem()
         # 初始化队伍名映射器
         self.team_mapper = TeamNameMapper()
-        # 初始化数据库连接 (SQLite版本)
+        # 初始化SQLite数据库连接
         self.match_data_manager = MatchDataManager()
         # 初始化队伍管理器
         self.team_manager = TeamManager()

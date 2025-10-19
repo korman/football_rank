@@ -37,13 +37,10 @@ class MatchDataManager:
     通过SQLite存储和检索比赛数据
     """
 
-    def __init__(self, db_name=None, collection_name=None):
+    def __init__(self):
         """
         初始化比赛数据管理器
-
-        Args:
-            db_name (str): 数据库名称 (兼容MongoDB接口，实际忽略)
-            collection_name (str): 集合名称 (兼容MongoDB接口，实际忽略)
+        连接到SQLite数据库，用于存储和检索比赛数据
         """
         # 项目根目录下的match_data.db文件
         self.db_path = os.path.abspath(
@@ -51,7 +48,7 @@ class MatchDataManager:
         )
         self.conn = None
         self.cursor = None
-        self.mock_data = []  # 用于模拟数据（保留兼容性）
+        self.mock_data = []  # 存储模拟数据
         self._connect()
 
     def _connect(self):
@@ -510,12 +507,12 @@ class MatchDataManager:
                 self.conn.rollback()
             return False
 
-    def create_index(self, keys, unique=False):
+    def create_index(self, field_name, unique=False):
         """
-        创建索引以提高查询性能
+        创建SQLite索引以提高查询性能
 
         Args:
-            keys (dict or list): 索引键
+            field_name (str): 要索引的字段名
             unique (bool): 是否为唯一索引
 
         Returns:
@@ -526,40 +523,24 @@ class MatchDataManager:
                 return False
 
         try:
-            # 转换键格式为SQLite索引格式
-            if isinstance(keys, dict):
-                # 处理MongoDB格式的索引定义 {"field": 1}
-                index_fields = []
-                for field, order in keys.items():
-                    # 处理关键字字段AS
-                    col_name = "[AS]" if field == "AS" else field
-                    index_fields.append(f"{col_name} {'ASC' if order > 0 else 'DESC'}")
-                index_sql = f"CREATE {'UNIQUE' if unique else ''} INDEX idx_{'_'.join(keys.keys())} ON matches ({', '.join(index_fields)})"
-            elif isinstance(keys, list):
-                # 处理字段列表格式
-                index_fields = []
-                for field in keys:
-                    # 处理关键字字段AS
-                    if isinstance(field, tuple):  # 支持 (field, order) 格式
-                        field_name, order = field
-                        col_name = "[AS]" if field_name == "AS" else field_name
-                        index_fields.append(
-                            f"{col_name} {'ASC' if order > 0 else 'DESC'}"
-                        )
-                    else:  # 简单字段名
-                        col_name = "[AS]" if field == "AS" else field
-                        index_fields.append(col_name)
-                index_sql = f"CREATE {'UNIQUE' if unique else ''} INDEX idx_{'_'.join([f[0] if isinstance(f, tuple) else f for f in keys])} ON matches ({', '.join(index_fields)})"
-            else:
-                # 单个字段
-                field = keys
-                col_name = "[AS]" if field == "AS" else field
-                index_sql = f"CREATE {'UNIQUE' if unique else ''} INDEX idx_{field} ON matches ({col_name})"
+            # 处理关键字字段AS
+            col_name = "[AS]" if field_name == "AS" else field_name
+            index_name = f"idx_{col_name}"
 
-            # 执行索引创建
+            # 检查索引是否已存在
+            self.cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='index' AND name=?",
+                (index_name,),
+            )
+            if self.cursor.fetchone():
+                logger.info(f"索引 {index_name} 已存在")
+                return True
+
+            # 创建索引
+            index_sql = f"CREATE {'UNIQUE' if unique else ''} INDEX {index_name} ON matches ({col_name})"
             self.cursor.execute(index_sql)
             self.conn.commit()
-            logger.info(f"成功创建SQLite索引: {keys}, 唯一: {unique}")
+            logger.info(f"成功创建索引: {index_name} on {col_name}")
             return True
         except Exception as e:
             logger.error(f"创建索引时出错: {e}")

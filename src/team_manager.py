@@ -41,7 +41,7 @@ class TeamManager:
         """
         # 检查队伍是否已存在
         if name in self._teams:
-            logger.warning(f"队伍 '{name}' 已存在，返回现有队伍")
+            # logger.warning(f"队伍 '{name}' 已存在，返回现有队伍")
             # 如果提供了联赛信息且队伍没有联赛信息，则更新联赛信息
             if league and not self._teams[name].league:
                 self._teams[name].league = league
@@ -120,7 +120,7 @@ class TeamManager:
         team = self.get_team(name)
         if team:
             team.increment_match_count()
-            logger.info(f"增加队伍 '{name}' 的比赛次数至 {team.match_count}")
+            # logger.info(f"增加队伍 '{name}' 的比赛次数至 {team.match_count}")
             return True
         logger.warning(f"操作失败，队伍 '{name}' 不存在")
         return False
