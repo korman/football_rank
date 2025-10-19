@@ -20,6 +20,7 @@ from .match_ranking import MatchRankingSystem
 from .team_name_mapper import TeamNameMapper
 from .league_mapper import get_all_leagues, get_league_code
 from .match_data import MatchDataManager
+from .team_manager import TeamManager
 
 
 class RankingSystemMainWindow(QMainWindow):
@@ -33,6 +34,8 @@ class RankingSystemMainWindow(QMainWindow):
         self.team_mapper = TeamNameMapper()
         # 初始化数据库连接 (SQLite版本)
         self.match_data_manager = MatchDataManager()
+        # 初始化队伍管理器
+        self.team_manager = TeamManager()
         # 当前选中的联赛
         self.current_league = None
         # 初始化界面
@@ -71,6 +74,14 @@ class RankingSystemMainWindow(QMainWindow):
                         away = match["AwayTeam"]
                         home_score = int(match["FTHG"])
                         away_score = int(match["FTAG"])
+
+                        # 首先通过TeamManager创建或获取队伍
+                        self.team_manager.create_team(home)
+                        self.team_manager.create_team(away)
+
+                        # 更新队伍的比赛次数
+                        self.team_manager.increment_match_count(home)
+                        self.team_manager.increment_match_count(away)
 
                         # 使用两种算法处理同一场比赛
                         self.ranking_system.elo_algorithm.process_match(

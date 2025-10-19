@@ -605,27 +605,3 @@ class MatchDataManager:
 
         # 获取数据 - 直接传递查询字典给get_matches
         return self.get_matches(query, limit=limit)
-
-
-if __name__ == "__main__":
-    # 测试代码 - SQLite版本
-    manager = MatchDataManager()
-
-    if manager.is_connected():
-        print("已成功连接到SQLite数据库")
-    else:
-        print("连接SQLite数据库失败")
-
-    # 测试获取英超比赛数据
-    league_name = "英超"
-    matches = manager.get_league_matches(league_name, limit=5)
-
-    print(f"获取到 {league_name} 的 {len(matches)} 条比赛数据：")
-    for match in matches:
-        print(
-            f"日期: {match.get('Date')}, 主队: {match.get('HomeTeam')}, 客队: {match.get('AwayTeam')}, 比分: {match.get('FTHG')}-{match.get('FTAG')}"
-        )
-
-    # 关闭连接
-    manager.close()
-    print("数据库连接已关闭")
