@@ -8,9 +8,10 @@ class Team:
         mu (float): TrueSkill评级系统中的mu值（技能均值）
         sigma (float): TrueSkill评级系统中的sigma值（技能不确定性）
         match_count (int): 参与联赛的比赛次数
+        league (str): 队伍所在的联赛代码（如'E0'、'SP1'等）
     """
 
-    def __init__(self, name, elo=1500.0, mu=25.0, sigma=8.333):
+    def __init__(self, name, elo=1500.0, mu=25.0, sigma=8.333, league=None):
         """
         初始化队伍对象
 
@@ -19,12 +20,14 @@ class Team:
             elo (float, optional): 初始Elo评分，默认为1500.0
             mu (float, optional): 初始TrueSkill mu值，默认为25.0
             sigma (float, optional): 初始TrueSkill sigma值，默认为8.333
+            league (str, optional): 队伍所在的联赛代码，默认为None
         """
         self.name = name
         self.elo = elo
         self.mu = mu
         self.sigma = sigma
         self.match_count = 0
+        self.league = league
 
     def update_rating(self, new_elo=None, new_mu=None, new_sigma=None):
         """
@@ -64,7 +67,7 @@ class Team:
         return (
             f"Team(name='{self.name}', elo={self.elo:.2f}, "
             f"mu={self.mu:.2f}, sigma={self.sigma:.2f}, "
-            f"match_count={self.match_count})"
+            f"match_count={self.match_count}, league={self.league})"
         )
 
     def __repr__(self):

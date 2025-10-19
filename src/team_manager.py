@@ -5,6 +5,7 @@ import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from team import Team
+from league_mapper import get_league_code
 import logging
 
 logger = logging.getLogger(__name__)
@@ -23,7 +24,7 @@ class TeamManager:
         self._teams = {}
         logger.info("队伍管理器已初始化")
 
-    def create_team(self, name, elo=1500.0, mu=25.0, sigma=8.333):
+    def create_team(self, name, elo=1500.0, mu=25.0, sigma=8.333, league=None):
         """
         创建新队伍，如果队伍已存在则返回现有队伍
 
@@ -32,6 +33,7 @@ class TeamManager:
             elo (float, optional): 初始Elo评分
             mu (float, optional): 初始TrueSkill mu值
             sigma (float, optional): 初始TrueSkill sigma值
+            league (str, optional): 队伍所在的联赛代码，如'E0'、'SP1'等
 
         返回:
             Team: 队伍对象
@@ -40,12 +42,16 @@ class TeamManager:
         # 检查队伍是否已存在
         if name in self._teams:
             logger.warning(f"队伍 '{name}' 已存在，返回现有队伍")
+            # 如果提供了联赛信息且队伍没有联赛信息，则更新联赛信息
+            if league and not self._teams[name].league:
+                self._teams[name].league = league
+                logger.info(f"更新队伍 '{name}' 的联赛信息为: {league}")
             return self._teams[name], False
 
         # 创建新队伍
-        team = Team(name, elo, mu, sigma)
+        team = Team(name, elo, mu, sigma, league)
         self._teams[name] = team
-        logger.info(f"成功创建新队伍: {name}")
+        logger.info(f"成功创建新队伍: {name}, 联赛: {league}")
         return team, True
 
     def get_team(self, name):
@@ -147,6 +153,33 @@ class TeamManager:
             bool: 队伍是否存在
         """
         return name in self._teams
+
+    def get_teams_by_league(self, chinese_league_name):
+        """
+        根据中文联赛名称获取该联赛的所有队伍
+
+        参数:
+            chinese_league_name (str): 中文联赛名称，如"英超"、"西甲"
+
+        返回:
+            list: 该联赛所有Team对象的列表
+        """
+        # 将中文联赛名称转换为联赛代码
+        league_code = get_league_code(chinese_league_name)
+
+        if not league_code:
+            logger.warning(f"未找到对应的联赛代码: {chinese_league_name}")
+            return []
+
+        # 筛选出属于该联赛的队伍
+        league_teams = [
+            team for team in self._teams.values() if team.league == league_code
+        ]
+
+        logger.info(
+            f"获取联赛 '{chinese_league_name}' ({league_code}) 的队伍，共 {len(league_teams)} 支"
+        )
+        return league_teams
 
     def get_team_count(self):
         """

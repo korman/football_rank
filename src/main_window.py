@@ -75,9 +75,12 @@ class RankingSystemMainWindow(QMainWindow):
                         home_score = int(match["FTHG"])
                         away_score = int(match["FTAG"])
 
-                        # 首先通过TeamManager创建或获取队伍
-                        self.team_manager.create_team(home)
-                        self.team_manager.create_team(away)
+                        # 使用已经确定的联赛代码
+                        league_code = get_league_code(league_name)
+
+                        # 首先通过TeamManager创建或获取队伍，并设置联赛信息
+                        self.team_manager.create_team(home, league=league_code)
+                        self.team_manager.create_team(away, league=league_code)
 
                         # 更新队伍的比赛次数
                         self.team_manager.increment_match_count(home)
@@ -256,28 +259,60 @@ class RankingSystemMainWindow(QMainWindow):
             self.ranking_table.setItem(i, 3, QTableWidgetItem(str(matches)))
 
     def load_elo_rankings(self):
-        """加载Elo排名数据"""
+        """加载Elo排名数据，使用TeamManager获取指定联赛的队伍"""
         try:
-            elo_rankings = self.ranking_system.get_elo_rankings()
-            # 对于Elo算法，假设稳定性是固定值，比赛场次暂时设为100
-            processed_rankings = [
-                (team, rating, 1.0, 100) for team, rating in elo_rankings
-            ]
+            if not self.current_league:
+                return []
+
+            # 使用TeamManager获取当前联赛的所有队伍
+            league_teams = self.team_manager.get_teams_by_league(self.current_league)
+
+            # 获取所有队伍的Elo排名并构建字典
+            all_elo_rankings = dict(self.ranking_system.get_elo_rankings())
+
+            # 构建排名数据
+            processed_rankings = []
+            for team in league_teams:
+                # 从排名字典中获取队伍的Elo评分，如果不存在则使用队伍默认值
+                elo_rating = all_elo_rankings.get(team.name, team.elo)
+                processed_rankings.append(
+                    (team.name, elo_rating, 1.0, team.match_count)
+                )
+
+            # 按Elo评分降序排序
+            processed_rankings.sort(key=lambda x: x[1], reverse=True)
             return processed_rankings
         except Exception as e:
             print(f"加载Elo排名出错: {e}")
             return []
 
     def load_openskill_rankings(self):
-        """加载OpenSkill排名数据"""
+        """加载OpenSkill排名数据，使用TeamManager获取指定联赛的队伍"""
         try:
-            openskill_rankings = self.ranking_system.get_openskill_rankings()
+            if not self.current_league:
+                return []
+
+            # 使用TeamManager获取当前联赛的所有队伍
+            league_teams = self.team_manager.get_teams_by_league(self.current_league)
             min_sigma = 1.5  # 最小sigma值用于稳定性计算
-            # OpenSkill算法中，将mu值乘以25后取整作为积分，使用新公式计算稳定性
+
+            # 获取所有队伍的OpenSkill排名并构建字典
+            all_openskill_rankings = dict(self.ranking_system.get_openskill_rankings())
+
+            # 构建排名数据
             processed_rankings = []
-            for team, rating in openskill_rankings:
-                mu_value = rating[0].mu
-                sigma_value = rating[0].sigma
+            for team in league_teams:
+                # 从排名字典中获取队伍的OpenSkill评分，如果不存在则为None
+                openskill_rating = all_openskill_rankings.get(team.name)
+
+                if openskill_rating:
+                    # 如果ranking_system中有评分，使用该评分
+                    mu_value = openskill_rating[0].mu
+                    sigma_value = openskill_rating[0].sigma
+                else:
+                    # 否则使用队伍对象中的默认值
+                    mu_value = team.mu
+                    sigma_value = team.sigma
 
                 # 计算积分：mu值乘以25后取整
                 score = int(mu_value * 25)
@@ -287,8 +322,12 @@ class RankingSystemMainWindow(QMainWindow):
                 # 四舍五入处理并添加%符号
                 stability = f"{round(stability_value)}%"
 
-                processed_rankings.append((team, score, stability, 100))
+                processed_rankings.append(
+                    (team.name, score, stability, team.match_count)
+                )
 
+            # 按积分降序排序
+            processed_rankings.sort(key=lambda x: x[1], reverse=True)
             return processed_rankings
         except Exception as e:
             print(f"加载OpenSkill排名出错: {e}")
