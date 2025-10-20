@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (
     QFrame,
     QWidget,
 )
-from PyQt6.QtGui import QPixmap, QFont
+from PyQt6.QtGui import QPixmap, QFont, QPainter
 from PyQt6.QtCore import Qt
 from PyQt6.QtCharts import (
     QChart,
@@ -25,6 +25,7 @@ from datetime import datetime, timedelta
 from typing import List, Optional
 from .team import Team
 from .match_info import MatchInfo
+from .team_name_mapper import TeamNameMapper
 
 
 class TeamInfoDialog(QDialog):
@@ -103,9 +104,11 @@ class TeamInfoDialog(QDialog):
         info_container = QWidget()
         info_v_layout = QVBoxLayout(info_container)
 
-        # 队伍名称
-        team_name_label = QLabel(self.team.name)
-        team_name_font = QFont("SimHei", 24, QFont.Weight.Bold)
+        # 队伍名称 - 使用中文显示
+        team_name_mapper = TeamNameMapper()
+        chinese_team_name = team_name_mapper.get_chinese_name(self.team.name)
+        team_name_label = QLabel(chinese_team_name)
+        team_name_font = QFont("SimHei", 28, QFont.Weight.Bold)  # 字号从24调整到28
         team_name_label.setFont(team_name_font)
         team_name_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
 
@@ -190,7 +193,7 @@ class TeamInfoDialog(QDialog):
 
         # 创建图表视图
         chart_view = QChartView(chart)
-        chart_view.setRenderHint(QChartView.RenderHint.Antialiasing)
+        chart_view.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         # 将图表视图添加到容器
         chart_layout = QVBoxLayout(chart_frame)

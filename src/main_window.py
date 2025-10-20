@@ -175,19 +175,78 @@ class RankingSystemMainWindow(QMainWindow):
             print(f"加载数据时出错: {e}")
 
     def on_cell_clicked(self, row, column):
-        """表格单元格点击事件处理函数"""
-        # 如果点击的是队伍名列（第0列）
-        if column == 0:
-            # 获取队伍名
-            team_name_item = self.ranking_table.item(row, 0)
-            if team_name_item:
-                team_name = team_name_item.text()
-                # 从TeamManager获取对应的Team对象
-                team = self.team_manager.get_team(team_name)
-                if team:
-                    # 创建并显示队伍信息对话框
-                    dialog = TeamInfoDialog(team, self)
-                    dialog.exec()
+        """表格单元格双击事件处理函数"""
+        # 输出调试信息
+        print(f"调试信息: 双击事件触发 - 行号: {row}, 列号: {column}")
+        logging.info(f"双击事件触发 - 行号: {row}, 列号: {column}")
+
+        # 获取队伍名（无论双击哪一列，都从第0列获取队伍名）
+        team_name_item = self.ranking_table.item(row, 0)
+        if team_name_item:
+            display_name = team_name_item.text()
+            print(f"调试信息: 获取到显示的队伍名 - '{display_name}'")
+            logging.info(f"获取到显示的队伍名 - '{display_name}'")
+
+            # 实现从中文队名查找英文队名的功能
+            def get_standard_name(chinese_name):
+                # 反向遍历mapping字典，找到对应的英文队名
+                for eng_name, chn_name in self.team_mapper.mapping.items():
+                    if chn_name == chinese_name:
+                        return eng_name
+                return None
+
+            # 先尝试通过反向映射获取系统名称（英文队名）
+            system_name = get_standard_name(display_name)
+            print(f"调试信息: 通过反向映射转换后的系统名称 - '{system_name}'")
+
+            # 尝试从TeamManager获取对应的Team对象
+            team = None
+            # 先尝试使用映射后的系统名称查找
+            if system_name and system_name != display_name:
+                print(f"调试信息: 尝试使用映射后的名称获取队伍 - '{system_name}'")
+                team = self.team_manager.get_team(system_name)
+
+            # 如果映射查找失败，尝试直接使用显示名称查找
+            if not team:
+                print(f"调试信息: 尝试直接使用显示名称获取队伍 - '{display_name}'")
+                team = self.team_manager.get_team(display_name)
+
+            # 如果仍然找不到，尝试在所有队伍中进行模糊匹配
+            if not team:
+                print(f"调试信息: 尝试在所有队伍中进行模糊匹配")
+                all_teams = self.team_manager.get_all_teams()
+                # 转换为小写进行模糊匹配
+                display_lower = display_name.lower()
+                for t in all_teams:
+                    if (
+                        display_lower in t.name.lower()
+                        or t.name.lower() in display_lower
+                    ):
+                        team = t
+                        print(f"调试信息: 模糊匹配成功 - 找到了 '{t.name}'")
+                        break
+
+            if team:
+                print(f"调试信息: 找到对应的Team对象 - {team.name}")
+                logging.info(f"找到对应的Team对象 - {team.name}")
+                # 创建并显示队伍信息对话框
+                print(f"调试信息: 创建并显示队伍信息对话框")
+                dialog = TeamInfoDialog(team, self)
+                result = dialog.exec()
+                print(f"调试信息: 对话框已关闭，返回结果: {result}")
+            else:
+                # 添加失败情况下的详细调试信息
+                print(f"调试信息: 未找到对应的Team对象 - '{display_name}'")
+                logging.warning(f"未找到对应的Team对象 - '{display_name}'")
+                # 获取TeamManager中的所有队伍名称进行对比
+                all_teams = self.team_manager.get_all_teams()
+                print(f"调试信息: TeamManager中共有 {len(all_teams)} 支队伍")
+                # 打印前5支队伍名称作为参考
+                if all_teams:
+                    print(f"调试信息: 部分队伍列表: {[t.name for t in all_teams[:5]]}")
+        else:
+            print(f"调试信息: 未能获取到第{row}行的队伍名")
+            logging.warning(f"未能获取到第{row}行的队伍名")
 
     def init_ui(self):
         # 设置窗口标题和大小
@@ -282,8 +341,8 @@ class RankingSystemMainWindow(QMainWindow):
         # 禁用编辑
         self.ranking_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
 
-        # 添加单元格点击事件
-        self.ranking_table.cellClicked.connect(self.on_cell_clicked)
+        # 添加单元格双击事件
+        self.ranking_table.cellDoubleClicked.connect(self.on_cell_clicked)
 
         # 添加表格到布局
         table_layout.addWidget(self.ranking_table)
