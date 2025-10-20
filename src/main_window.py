@@ -220,6 +220,15 @@ class RankingSystemMainWindow(QMainWindow):
         else:
             # 记录当前选中的联赛
             self.current_league = selected_league
+            # 清除之前的数据，避免重复计算比赛次数
+            self.team_manager.clear_all_teams()
+            # 重置排名系统的算法实例
+            self.ranking_system.elo_algorithm = (
+                self.ranking_system.elo_algorithm.__class__()
+            )
+            self.ranking_system.openskill_algorithm = (
+                self.ranking_system.openskill_algorithm.__class__()
+            )
             # 加载并处理选中联赛的数据
             self._load_and_process_data(selected_league)
 
