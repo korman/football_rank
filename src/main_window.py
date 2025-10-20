@@ -142,24 +142,60 @@ class RankingSystemMainWindow(QMainWindow):
                             match_date = datetime.now()
                             logging.warning("数据库中没有找到比赛日期，使用当前时间")
 
-                        # 为HomeTeam创建并添加MatchInfo
+                        # 从ranking_system获取更新后的积分
+                        home_elo = self.ranking_system.elo_algorithm.teams.get(
+                            home, home_team.elo
+                        )
+                        away_elo = self.ranking_system.elo_algorithm.teams.get(
+                            away, away_team.elo
+                        )
+
+                        home_openskill = (
+                            self.ranking_system.openskill_algorithm.teams.get(home)
+                        )
+                        away_openskill = (
+                            self.ranking_system.openskill_algorithm.teams.get(away)
+                        )
+
+                        # 更新team_manager中的Team对象积分
                         if home_team:
+                            home_mu = (
+                                home_openskill[0].mu if home_openskill else home_team.mu
+                            )
+                            home_sigma = (
+                                home_openskill[0].sigma
+                                if home_openskill
+                                else home_team.sigma
+                            )
+                            home_team.update_rating(home_elo, home_mu, home_sigma)
+
+                            # 创建并添加MatchInfo
                             home_match_info = MatchInfo(
                                 match_id=match_id,
-                                mu=home_team.mu,
-                                elo=home_team.elo,
-                                sigma=home_team.sigma,
+                                mu=home_mu,
+                                elo=home_elo,
+                                sigma=home_sigma,
                                 match_date=match_date,
                             )
                             home_team.add_match_info(home_match_info)
 
-                        # 为AwayTeam创建并添加MatchInfo
+                        # 为AwayTeam更新积分并创建MatchInfo
                         if away_team:
+                            away_mu = (
+                                away_openskill[0].mu if away_openskill else away_team.mu
+                            )
+                            away_sigma = (
+                                away_openskill[0].sigma
+                                if away_openskill
+                                else away_team.sigma
+                            )
+                            away_team.update_rating(away_elo, away_mu, away_sigma)
+
                             away_match_info = MatchInfo(
                                 match_id=match_id,
-                                mu=away_team.mu,
-                                elo=away_team.elo,
-                                sigma=away_team.sigma,
+                                mu=away_mu,
+                                elo=away_elo,
+                                sigma=away_sigma,
                                 match_date=match_date,
                             )
                             away_team.add_match_info(away_match_info)

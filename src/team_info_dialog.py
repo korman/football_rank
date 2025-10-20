@@ -162,7 +162,10 @@ class TeamInfoDialog(QDialog):
 
         # 创建图表
         chart = QChart()
-        chart.setTitle(f"{self.team.name} 积分变化趋势")
+        # 使用中文队名作为图表标题
+        team_name_mapper = TeamNameMapper()
+        chinese_team_name = team_name_mapper.get_chinese_name(self.team.name)
+        chart.setTitle(f"{chinese_team_name} 积分变化趋势")
         chart.setAnimationOptions(QChart.AnimationOption.SeriesAnimations)
         chart.legend().setVisible(True)
         chart.legend().setAlignment(Qt.AlignmentFlag.AlignBottom)
