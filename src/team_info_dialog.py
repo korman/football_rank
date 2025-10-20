@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import (
     QHeaderView,
     QFrame,
     QWidget,
+    QCheckBox,
 )
 from PyQt6.QtGui import QPixmap, QFont, QPainter
 from PyQt6.QtCore import Qt
@@ -43,6 +44,8 @@ class TeamInfoDialog(QDialog):
         """
         super().__init__(parent)
         self.team = team
+        self.elo_series = None  # 保存对elo系列的引用
+        self.trueskill_series = None  # 保存对trueskill系列的引用
         self._init_ui()
 
     def _init_ui(self):
@@ -161,96 +164,154 @@ class TeamInfoDialog(QDialog):
         chart_frame.setMinimumHeight(300)
 
         # 创建图表
-        chart = QChart()
+        self.chart = QChart()
         # 使用中文队名作为图表标题
         team_name_mapper = TeamNameMapper()
         chinese_team_name = team_name_mapper.get_chinese_name(self.team.name)
-        chart.setTitle(f"{chinese_team_name} 积分变化趋势")
-        chart.setAnimationOptions(QChart.AnimationOption.SeriesAnimations)
-        chart.legend().setVisible(True)
-        chart.legend().setAlignment(Qt.AlignmentFlag.AlignBottom)
+        self.chart.setTitle(f"{chinese_team_name} 积分变化趋势")
+        self.chart.setAnimationOptions(QChart.AnimationOption.SeriesAnimations)
+        self.chart.legend().setVisible(True)
+        self.chart.legend().setAlignment(Qt.AlignmentFlag.AlignBottom)
 
         # 创建坐标轴
-        axis_x = QDateTimeAxis()
-        axis_x.setTickCount(6)
-        axis_x.setFormat("yyyy-MM-dd")
-        axis_x.setTitleText("日期")
+        self.axis_x = QDateTimeAxis()
+        self.axis_x.setTickCount(6)
+        self.axis_x.setFormat("yyyy-MM-dd")
+        self.axis_x.setTitleText("日期")
 
-        axis_y = QValueAxis()
-        axis_y.setLabelFormat("%.0f")
-        axis_y.setTitleText("积分值")
+        self.axis_y = QValueAxis()
+        self.axis_y.setLabelFormat("%.0f")
+        self.axis_y.setTitleText("积分值")
 
-        # 创建并添加模拟数据系列
-        elo_series = self._create_elo_series()
-        trueskill_series = self._create_trueskill_series()
+        # 创建并添加数据系列
+        self.elo_series = self._create_elo_series()
+        self.trueskill_series = self._create_trueskill_series()
 
-        chart.addSeries(elo_series)
-        chart.addSeries(trueskill_series)
-        chart.addAxis(axis_x, Qt.AlignmentFlag.AlignBottom)
-        chart.addAxis(axis_y, Qt.AlignmentFlag.AlignLeft)
+        self.chart.addSeries(self.elo_series)
+        self.chart.addSeries(self.trueskill_series)
+        self.chart.addAxis(self.axis_x, Qt.AlignmentFlag.AlignBottom)
+        self.chart.addAxis(self.axis_y, Qt.AlignmentFlag.AlignLeft)
 
-        elo_series.attachAxis(axis_x)
-        elo_series.attachAxis(axis_y)
-        trueskill_series.attachAxis(axis_x)
-        trueskill_series.attachAxis(axis_y)
+        self.elo_series.attachAxis(self.axis_x)
+        self.elo_series.attachAxis(self.axis_y)
+        self.trueskill_series.attachAxis(self.axis_x)
+        self.trueskill_series.attachAxis(self.axis_y)
 
         # 创建图表视图
-        chart_view = QChartView(chart)
+        chart_view = QChartView(self.chart)
         chart_view.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        # 将图表视图添加到容器
+        # 创建选择框布局
+        checkbox_layout = QHBoxLayout()
+
+        # 创建Elo选择框
+        self.elo_checkbox = QCheckBox("elo")
+        self.elo_checkbox.setChecked(True)  # 初始状态为勾选
+        self.elo_checkbox.stateChanged.connect(self._on_elo_checkbox_changed)
+        checkbox_layout.addWidget(self.elo_checkbox)
+
+        # 创建TrueSkill选择框
+        self.trueskill_checkbox = QCheckBox("trueskill")
+        self.trueskill_checkbox.setChecked(True)  # 初始状态为勾选
+        self.trueskill_checkbox.stateChanged.connect(
+            self._on_trueskill_checkbox_changed
+        )
+        checkbox_layout.addWidget(self.trueskill_checkbox)
+
+        checkbox_layout.addStretch()
+
+        # 将图表视图和选择框添加到容器
         chart_layout = QVBoxLayout(chart_frame)
         chart_layout.addWidget(chart_view)
+        chart_layout.addLayout(checkbox_layout)
 
         # 添加到主布局
         parent_layout.addWidget(chart_frame)
         parent_layout.addSpacing(20)
 
+    def _on_elo_checkbox_changed(self, state):
+        """
+        处理Elo选择框状态变化
+        """
+        if self.elo_series:
+            is_checked = state == Qt.CheckState.Checked
+            self.elo_series.setVisible(is_checked)
+
+            # 确保在图表中正确显示
+            if is_checked and self.elo_series not in self.chart.series():
+                self.chart.addSeries(self.elo_series)
+                self.elo_series.attachAxis(self.axis_x)
+                self.elo_series.attachAxis(self.axis_y)
+
+    def _on_trueskill_checkbox_changed(self, state):
+        """
+        处理TrueSkill选择框状态变化
+        """
+        if self.trueskill_series:
+            is_checked = state == Qt.CheckState.Checked
+            self.trueskill_series.setVisible(is_checked)
+
+            # 确保在图表中正确显示
+            if is_checked and self.trueskill_series not in self.chart.series():
+                self.chart.addSeries(self.trueskill_series)
+                self.trueskill_series.attachAxis(self.axis_x)
+                self.trueskill_series.attachAxis(self.axis_y)
+
     def _create_elo_series(self) -> QLineSeries:
         """
-        创建Elo积分历史系列
+        创建Elo积分历史系列，使用队伍的实际比赛数据
         """
         series = QLineSeries()
         series.setName("Elo积分")
 
-        # 生成模拟数据
-        today = datetime.now()
-        base_elo = self.team.elo
+        # 获取队伍的历史比赛信息
+        match_infos = self.team.get_match_info()
 
-        # 生成过去30天的模拟数据
-        for i in range(30):
-            date = today - timedelta(days=30 - i)
-            # 添加一些随机波动
-            variation = (i % 5 - 2) * 10  # 简单波动模式
-            elo_value = base_elo + variation
-            series.append(date.timestamp() * 1000, elo_value)
+        if match_infos:
+            # 按日期排序
+            sorted_matches = sorted(match_infos, key=lambda x: x.match_date)
 
-        # 添加当前值
-        series.append(today.timestamp() * 1000, self.team.elo)
+            # 添加实际比赛数据
+            for match_info in sorted_matches:
+                # 确保match_date是有效的datetime对象
+                if isinstance(match_info.match_date, datetime):
+                    timestamp = match_info.match_date.timestamp() * 1000
+                    series.append(timestamp, match_info.elo)
+        else:
+            # 如果没有比赛数据，添加当前值作为参考
+            today = datetime.now()
+            series.append(today.timestamp() * 1000, self.team.elo)
 
         return series
 
     def _create_trueskill_series(self) -> QLineSeries:
         """
-        创建TrueSkill积分历史系列
+        创建TrueSkill积分历史系列，使用队伍的实际比赛数据
+        注意：将mu值乘以25以避免因数值过低导致的显示问题
         """
         series = QLineSeries()
         series.setName("TrueSkill积分")
 
-        # 生成模拟数据
-        today = datetime.now()
-        base_mu = self.team.mu
+        # 获取队伍的历史比赛信息
+        match_infos = self.team.get_match_info()
 
-        # 生成过去30天的模拟数据
-        for i in range(30):
-            date = today - timedelta(days=30 - i)
-            # 添加一些随机波动
-            variation = (i % 7 - 3) * 5  # 不同的波动模式
-            mu_value = base_mu + variation
-            series.append(date.timestamp() * 1000, mu_value)
+        if match_infos:
+            # 按日期排序
+            sorted_matches = sorted(match_infos, key=lambda x: x.match_date)
 
-        # 添加当前值
-        series.append(today.timestamp() * 1000, self.team.mu)
+            # 添加实际比赛数据，并将mu值乘以25
+            for match_info in sorted_matches:
+                # 确保match_date是有效的datetime对象
+                if isinstance(match_info.match_date, datetime):
+                    timestamp = match_info.match_date.timestamp() * 1000
+                    # 将mu值乘以25
+                    scaled_mu = match_info.mu * 25
+                    series.append(timestamp, scaled_mu)
+        else:
+            # 如果没有比赛数据，添加当前值作为参考，并将mu值乘以25
+            today = datetime.now()
+            scaled_mu = self.team.mu * 25
+            series.append(today.timestamp() * 1000, scaled_mu)
 
         return series
 
