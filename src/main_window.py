@@ -17,6 +17,7 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QMessageBox,
 )
+from .team_info_dialog import TeamInfoDialog
 from .sqlite_importer import sqlite_importer
 from PyQt6.QtCore import Qt
 from .match_ranking import MatchRankingSystem
@@ -173,6 +174,21 @@ class RankingSystemMainWindow(QMainWindow):
         except Exception as e:
             print(f"加载数据时出错: {e}")
 
+    def on_cell_clicked(self, row, column):
+        """表格单元格点击事件处理函数"""
+        # 如果点击的是队伍名列（第0列）
+        if column == 0:
+            # 获取队伍名
+            team_name_item = self.ranking_table.item(row, 0)
+            if team_name_item:
+                team_name = team_name_item.text()
+                # 从TeamManager获取对应的Team对象
+                team = self.team_manager.get_team(team_name)
+                if team:
+                    # 创建并显示队伍信息对话框
+                    dialog = TeamInfoDialog(team, self)
+                    dialog.exec()
+
     def init_ui(self):
         # 设置窗口标题和大小
         self.setWindowTitle("浩子比赛排名系统")
@@ -265,6 +281,9 @@ class RankingSystemMainWindow(QMainWindow):
 
         # 禁用编辑
         self.ranking_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+
+        # 添加单元格点击事件
+        self.ranking_table.cellClicked.connect(self.on_cell_clicked)
 
         # 添加表格到布局
         table_layout.addWidget(self.ranking_table)
