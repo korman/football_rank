@@ -4,7 +4,7 @@ import os
 # 确保当前目录在Python路径中
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from team import Team
+from .team import Team
 from league_mapper import get_league_code
 import logging
 

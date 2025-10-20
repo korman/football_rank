@@ -1,4 +1,7 @@
 import sys
+import logging
+from datetime import datetime
+from typing import Optional
 from PyQt6.QtWidgets import (
     QApplication,
     QMainWindow,
@@ -21,6 +24,7 @@ from .team_name_mapper import TeamNameMapper
 from .league_mapper import get_all_leagues, get_league_code
 from .match_data import MatchDataManager
 from .team_manager import TeamManager
+from .match_info import MatchInfo
 
 
 class RankingSystemMainWindow(QMainWindow):
@@ -93,6 +97,71 @@ class RankingSystemMainWindow(QMainWindow):
                         self.ranking_system.openskill_algorithm.process_match(
                             home, away, home_score, away_score
                         )
+
+                        # 获取当前比赛的mu、elo和sigma值
+                        # 对于HomeTeam
+                        home_team = self.team_manager.get_team(home)
+                        # 对于AwayTeam
+                        away_team = self.team_manager.get_team(away)
+
+                        # 获取比赛ID和日期
+                        match_id = int(match.get("id", 0))
+                        match_date_str = match.get("Date", "")
+
+                        # 优先使用数据库中的比赛日期
+                        if match_date_str:
+                            try:
+                                # 尝试不同的日期格式，优先添加两位年份的日/月/年格式
+                                for fmt in [
+                                    "%d/%m/%y",
+                                    "%Y-%m-%d",
+                                    "%d/%m/%Y",
+                                    "%d-%m-%Y",
+                                ]:
+                                    try:
+                                        match_date = datetime.strptime(
+                                            match_date_str, fmt
+                                        )
+                                        break
+                                    except ValueError:
+                                        continue
+                                # 如果所有格式都解析失败，才使用当前时间
+                                else:
+                                    match_date = datetime.now()
+                                    logging.warning(
+                                        f"无法解析比赛日期: {match_date_str}，使用当前时间"
+                                    )
+                            except Exception as e:
+                                match_date = datetime.now()
+                                logging.error(
+                                    f"解析日期时发生错误: {str(e)}，使用当前时间"
+                                )
+                        else:
+                            # 如果数据库中没有日期字段，使用当前时间作为备选方案
+                            match_date = datetime.now()
+                            logging.warning("数据库中没有找到比赛日期，使用当前时间")
+
+                        # 为HomeTeam创建并添加MatchInfo
+                        if home_team:
+                            home_match_info = MatchInfo(
+                                match_id=match_id,
+                                mu=home_team.mu,
+                                elo=home_team.elo,
+                                sigma=home_team.sigma,
+                                match_date=match_date,
+                            )
+                            home_team.add_match_info(home_match_info)
+
+                        # 为AwayTeam创建并添加MatchInfo
+                        if away_team:
+                            away_match_info = MatchInfo(
+                                match_id=match_id,
+                                mu=away_team.mu,
+                                elo=away_team.elo,
+                                sigma=away_team.sigma,
+                                match_date=match_date,
+                            )
+                            away_team.add_match_info(away_match_info)
             else:
                 # 处理所有比赛
                 self.ranking_system.process_all_matches()
@@ -392,6 +461,3 @@ class RankingSystemMainWindow(QMainWindow):
                 "导入完成",
                 f"所有文件导入完成!\n总计导入: {total_imported} 行\n跳过重复: {total_skipped} 行",
             )
-
-
-# 主窗口类已定义，主函数已移至项目根目录的main.py文件中
