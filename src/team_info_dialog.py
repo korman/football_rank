@@ -182,6 +182,9 @@ class TeamInfoDialog(QDialog):
         self.axis_y = QValueAxis()
         self.axis_y.setLabelFormat("%.0f")
         self.axis_y.setTitleText("积分值")
+        # 设置Y轴范围为800到2500
+        self.axis_y.setMin(800)
+        self.axis_y.setMax(2500)
 
         # 创建并添加数据系列
         self.elo_series = self._create_elo_series()

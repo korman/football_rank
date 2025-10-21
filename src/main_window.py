@@ -112,26 +112,30 @@ class RankingSystemMainWindow(QMainWindow):
                         # 优先使用数据库中的比赛日期
                         if match_date_str:
                             try:
-                                # 尝试不同的日期格式，优先添加两位年份的日/月/年格式
-                                for fmt in [
-                                    "%d/%m/%y",
-                                    "%Y-%m-%d",
-                                    "%d/%m/%Y",
-                                    "%d-%m-%Y",
-                                ]:
-                                    try:
-                                        match_date = datetime.strptime(
-                                            match_date_str, fmt
-                                        )
-                                        break
-                                    except ValueError:
-                                        continue
-                                # 如果所有格式都解析失败，才使用当前时间
+                                # 首先检查是否是整数类型的时间戳
+                                if isinstance(match_date_str, int):
+                                    match_date = datetime.fromtimestamp(match_date_str)
                                 else:
-                                    match_date = datetime.now()
-                                    logging.warning(
-                                        f"无法解析比赛日期: {match_date_str}，使用当前时间"
-                                    )
+                                    # 尝试不同的日期格式，优先添加两位年份的日/月/年格式
+                                    for fmt in [
+                                        "%d/%m/%y",
+                                        "%Y-%m-%d",
+                                        "%d/%m/%Y",
+                                        "%d-%m-%Y",
+                                    ]:
+                                        try:
+                                            match_date = datetime.strptime(
+                                                match_date_str, fmt
+                                            )
+                                            break
+                                        except ValueError:
+                                            continue
+                                    # 如果所有格式都解析失败，才使用当前时间
+                                    else:
+                                        match_date = datetime.now()
+                                        logging.warning(
+                                            f"无法解析比赛日期: {match_date_str}，使用当前时间"
+                                        )
                             except Exception as e:
                                 match_date = datetime.now()
                                 logging.error(
@@ -169,12 +173,6 @@ class RankingSystemMainWindow(QMainWindow):
                             )
                             home_team.update_rating(home_elo, home_mu, home_sigma)
 
-                            # 当HomeTeam是Liverpool时，输出调试信息
-                            if home.lower() == "liverpool":
-                                print(
-                                    f"[调试] Liverpool比赛于{match_date.strftime('%Y-%m-%d')}结束，计算后积分 - ELO: {home_elo}, TrueSkill: {home_mu:.2f}"
-                                )
-
                             # 创建并添加MatchInfo
                             home_match_info = MatchInfo(
                                 match_id=match_id,
@@ -196,12 +194,6 @@ class RankingSystemMainWindow(QMainWindow):
                                 else away_team.sigma
                             )
                             away_team.update_rating(away_elo, away_mu, away_sigma)
-
-                            # 当AwayTeam是Liverpool时，输出调试信息
-                            if away.lower() == "liverpool":
-                                print(
-                                    f"[调试] Liverpool比赛于{match_date.strftime('%Y-%m-%d')}结束，计算后积分 - ELO: {away_elo}, TrueSkill: {away_mu:.2f}"
-                                )
 
                             away_match_info = MatchInfo(
                                 match_id=match_id,
