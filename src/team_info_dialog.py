@@ -375,7 +375,7 @@ class TeamInfoDialog(QDialog):
         self.match_table = QTableWidget()
         self.match_table.setColumnCount(5)
         self.match_table.setHorizontalHeaderLabels(
-            ["比赛日期", "对手", "比分", "比赛ID", "比赛类型"]
+            ["比赛日期", "比赛对手", "比分", "积分", "积分变化"]
         )
 
         # 设置表格列宽自适应
