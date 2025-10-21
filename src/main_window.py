@@ -273,7 +273,8 @@ class RankingSystemMainWindow(QMainWindow):
                 logging.info(f"找到对应的Team对象 - {team.name}")
                 # 创建并显示队伍信息对话框
                 print(f"调试信息: 创建并显示队伍信息对话框")
-                dialog = TeamInfoDialog(team, self)
+                # 让TeamInfoDialog自己创建MatchDataManager实例
+                dialog = TeamInfoDialog(team, parent=self)
                 result = dialog.exec()
                 print(f"调试信息: 对话框已关闭，返回结果: {result}")
             else:
