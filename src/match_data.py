@@ -391,6 +391,84 @@ class MatchDataManager:
                 self.conn.rollback()
             return False
 
+    def get_match_by_id(self, match_id):
+        """
+        根据比赛ID获取单场比赛数据
+
+        Args:
+            match_id (str): 比赛ID
+
+        Returns:
+            dict: 比赛数据字典，如果未找到返回None
+        """
+        if not self.is_connected():
+            if not self._connect():
+                return None
+
+        try:
+            # 输出检索命令到控制台
+            print(f"执行SQLite查询: 数据库='{self.db_path}', 比赛ID={match_id}")
+
+            # 构建SQL查询 - 仅查询指定ID的比赛
+            query = "SELECT * FROM matches WHERE id = ?"
+            params = [match_id]
+
+            # 执行查询
+            self.cursor.execute(query, params)
+
+            # 获取结果
+            row = self.cursor.fetchone()
+
+            if not row:
+                print(f"SQLite查询结果: 未找到ID为{match_id}的比赛")
+                return None
+
+            # 获取列名
+            columns = [desc[0] for desc in self.cursor.description]
+
+            # 转换结果为字典
+            match_dict = {}
+            for i, col in enumerate(columns):
+                # 移除方括号（如果有的话）
+                if col.startswith("[") and col.endswith("]"):
+                    col = col[1:-1]
+
+                # 处理Date字段，确保它是时间戳格式
+                if col == "Date" and row[i] is not None:
+                    # 如果已经是整数类型，直接保留（时间戳格式）
+                    if isinstance(row[i], int):
+                        match_dict[col] = row[i]
+                    else:
+                        # 如果是字符串，尝试转换为时间戳
+                        try:
+                            # 尝试将字符串转换为时间戳
+                            timestamp = int(row[i])
+                            match_dict[col] = timestamp
+                        except (ValueError, TypeError):
+                            # 如果无法转换，记录警告并保持原样
+                            logger.warning(f"无法将日期值'{row[i]}'转换为时间戳")
+                            match_dict[col] = row[i]
+                else:
+                    match_dict[col] = row[i]
+
+            print(f"SQLite查询结果: 成功找到ID为{match_id}的比赛数据")
+            logger.info(f"成功从SQLite查询到ID为{match_id}的比赛数据")
+
+            # 输出查询到的比赛简要信息
+            div = match_dict.get("Div", "N/A")
+            date = match_dict.get("Date", "N/A")
+            home_team = match_dict.get("HomeTeam", "N/A")
+            away_team = match_dict.get("AwayTeam", "N/A")
+            print(
+                f"查询结果: 联赛={div}, 日期={date}, 主队={home_team}, 客队={away_team}"
+            )
+
+            return match_dict
+        except Exception as e:
+            logger.error(f"查询单场比赛数据时出错: {e}")
+            print(f"SQLite查询出错: {e}")
+            return None
+
     def create_index(self, field_name, unique=False):
         """
         创建SQLite索引以提高查询性能
