@@ -49,7 +49,6 @@ class MatchDataManager:
         )
         self.conn = None
         self.cursor = None
-        self.mock_data = []  # 存储模拟数据
         self._connect()
 
     def _connect(self):
@@ -75,16 +74,11 @@ class MatchDataManager:
             # 检查matches表是否存在，如果不存在，创建一个基础结构
             self._check_table_exists()
 
-            # 保留生成模拟数据的逻辑以确保兼容性
-            self._generate_mock_data()
-
             return True
         except Exception as e:
             logger.error(f"初始化SQLite连接时出错: {e}")
             self.conn = None
             self.cursor = None
-            # 连接失败时生成模拟数据
-            self._generate_mock_data()
             return False
 
     def _check_table_exists(self):
@@ -102,108 +96,6 @@ class MatchDataManager:
                 logger.warning("matches表不存在，生成的查询将返回空结果")
         except Exception as e:
             logger.error(f"检查matches表时出错: {e}")
-
-    def _generate_mock_data(self):
-        """
-        生成模拟的比赛数据，用于演示和测试
-        """
-        print("生成模拟比赛数据用于演示...")
-        # 英超模拟数据
-        premier_league_matches = [
-            {
-                "Div": "E0",
-                "Date": "2023-08-12",
-                "HomeTeam": "Arsenal",
-                "AwayTeam": "Crystal Palace",
-                "FTHG": 2,
-                "FTAG": 0,
-                "HTHG": 1,
-                "HTAG": 0,
-                "FTR": "H",
-                "Referee": "M Oliver",
-            },
-            {
-                "Div": "E0",
-                "Date": "2023-08-13",
-                "HomeTeam": "Chelsea",
-                "AwayTeam": "Liverpool",
-                "FTHG": 1,
-                "FTAG": 2,
-                "HTHG": 0,
-                "HTAG": 1,
-                "FTR": "A",
-                "Referee": "A Taylor",
-            },
-            {
-                "Div": "E0",
-                "Date": "2023-08-13",
-                "HomeTeam": "Man City",
-                "AwayTeam": "Burnley",
-                "FTHG": 3,
-                "FTAG": 0,
-                "HTHG": 2,
-                "HTAG": 0,
-                "FTR": "H",
-                "Referee": "P Tierney",
-            },
-            {
-                "Div": "E0",
-                "Date": "2023-08-14",
-                "HomeTeam": "Man United",
-                "AwayTeam": "Wolves",
-                "FTHG": 1,
-                "FTAG": 0,
-                "HTHG": 1,
-                "HTAG": 0,
-                "FTR": "H",
-                "Referee": "S Attwell",
-            },
-            {
-                "Div": "E0",
-                "Date": "2023-08-14",
-                "HomeTeam": "Tottenham",
-                "AwayTeam": "Brentford",
-                "FTHG": 2,
-                "FTAG": 2,
-                "HTHG": 1,
-                "HTAG": 1,
-                "FTR": "D",
-                "Referee": "R Jones",
-            },
-        ]
-
-        # 西甲模拟数据
-        la_liga_matches = [
-            {
-                "Div": "SP1",
-                "Date": "2023-08-11",
-                "HomeTeam": "Barcelona",
-                "AwayTeam": "Getafe",
-                "FTHG": 4,
-                "FTAG": 0,
-                "HTHG": 2,
-                "HTAG": 0,
-                "FTR": "H",
-                "Referee": "J Sánchez",
-            },
-            {
-                "Div": "SP1",
-                "Date": "2023-08-12",
-                "HomeTeam": "Real Madrid",
-                "AwayTeam": "Almería",
-                "FTHG": 2,
-                "FTAG": 0,
-                "HTHG": 1,
-                "HTAG": 0,
-                "FTR": "H",
-                "Referee": "A Mateu",
-            },
-        ]
-
-        # 合并所有模拟数据
-        self.mock_data.extend(premier_league_matches)
-        self.mock_data.extend(la_liga_matches)
-        print(f"成功生成{len(self.mock_data)}条模拟比赛数据")
 
     def is_connected(self):
         """
@@ -389,10 +281,10 @@ class MatchDataManager:
                 print(f"SQLite查询结果: 找到{len(matches)}条数据")
                 logger.info(f"成功从SQLite查询到 {len(matches)} 条比赛数据")
 
-                # 如果数据库查询成功但没有找到数据，也使用模拟数据
+                # 如果数据库查询成功但没有找到数据，返回空列表
                 if not matches:
-                    print("SQLite查询返回空结果，使用模拟数据...")
-                    return self._filter_mock_data(filters, limit)
+                    print("SQLite查询返回空结果")
+                    return []
 
                 # 确保返回的数据按日期从早到晚排序
                 # 对于时间戳，我们需要特殊处理排序逻辑
@@ -418,45 +310,11 @@ class MatchDataManager:
             except Exception as e:
                 logger.error(f"查询SQLite比赛数据时出错: {e}")
                 print(f"SQLite查询出错: {e}")
-                # 如果数据库查询失败，使用模拟数据
-                return self._filter_mock_data(filters, limit)
+                return []
         else:
-            # 如果连接不可用，使用模拟数据
-            print("使用模拟数据进行查询...")
-            return self._filter_mock_data(filters, limit)
-
-    def _filter_mock_data(self, filters=None, limit=100):
-        """
-        从模拟数据中过滤符合条件的比赛
-
-        Args:
-            filters (dict): 查询过滤条件
-            limit (int): 返回结果的最大数量
-
-        Returns:
-            list: 过滤后的模拟比赛数据列表
-        """
-        if not filters:
-            filtered_matches = self.mock_data[:limit]
-        else:
-            filtered_matches = []
-            for match in self.mock_data:
-                # 检查是否满足所有过滤条件
-                match_meets_criteria = True
-                for key, value in filters.items():
-                    if match.get(key) != value:
-                        match_meets_criteria = False
-                        break
-                if match_meets_criteria:
-                    filtered_matches.append(match)
-                    if len(filtered_matches) >= limit:
-                        break
-
-        # 按日期从早到晚排序模拟数据
-        filtered_matches.sort(key=lambda x: x.get("Date", ""))
-
-        print(f"从模拟数据中过滤出{len(filtered_matches)}条符合条件的比赛")
-        return filtered_matches
+            # 如果连接不可用，返回空列表
+            print("数据库连接不可用")
+            return []
 
     def update_match(self, match_id, update_data):
         """
@@ -532,6 +390,84 @@ class MatchDataManager:
             if self.conn:
                 self.conn.rollback()
             return False
+
+    def get_match_by_id(self, match_id):
+        """
+        根据比赛ID获取单场比赛数据
+
+        Args:
+            match_id (str): 比赛ID
+
+        Returns:
+            dict: 比赛数据字典，如果未找到返回None
+        """
+        if not self.is_connected():
+            if not self._connect():
+                return None
+
+        try:
+            # 输出检索命令到控制台
+            print(f"执行SQLite查询: 数据库='{self.db_path}', 比赛ID={match_id}")
+
+            # 构建SQL查询 - 仅查询指定ID的比赛
+            query = "SELECT * FROM matches WHERE id = ?"
+            params = [match_id]
+
+            # 执行查询
+            self.cursor.execute(query, params)
+
+            # 获取结果
+            row = self.cursor.fetchone()
+
+            if not row:
+                print(f"SQLite查询结果: 未找到ID为{match_id}的比赛")
+                return None
+
+            # 获取列名
+            columns = [desc[0] for desc in self.cursor.description]
+
+            # 转换结果为字典
+            match_dict = {}
+            for i, col in enumerate(columns):
+                # 移除方括号（如果有的话）
+                if col.startswith("[") and col.endswith("]"):
+                    col = col[1:-1]
+
+                # 处理Date字段，确保它是时间戳格式
+                if col == "Date" and row[i] is not None:
+                    # 如果已经是整数类型，直接保留（时间戳格式）
+                    if isinstance(row[i], int):
+                        match_dict[col] = row[i]
+                    else:
+                        # 如果是字符串，尝试转换为时间戳
+                        try:
+                            # 尝试将字符串转换为时间戳
+                            timestamp = int(row[i])
+                            match_dict[col] = timestamp
+                        except (ValueError, TypeError):
+                            # 如果无法转换，记录警告并保持原样
+                            logger.warning(f"无法将日期值'{row[i]}'转换为时间戳")
+                            match_dict[col] = row[i]
+                else:
+                    match_dict[col] = row[i]
+
+            print(f"SQLite查询结果: 成功找到ID为{match_id}的比赛数据")
+            logger.info(f"成功从SQLite查询到ID为{match_id}的比赛数据")
+
+            # 输出查询到的比赛简要信息
+            div = match_dict.get("Div", "N/A")
+            date = match_dict.get("Date", "N/A")
+            home_team = match_dict.get("HomeTeam", "N/A")
+            away_team = match_dict.get("AwayTeam", "N/A")
+            print(
+                f"查询结果: 联赛={div}, 日期={date}, 主队={home_team}, 客队={away_team}"
+            )
+
+            return match_dict
+        except Exception as e:
+            logger.error(f"查询单场比赛数据时出错: {e}")
+            print(f"SQLite查询出错: {e}")
+            return None
 
     def create_index(self, field_name, unique=False):
         """

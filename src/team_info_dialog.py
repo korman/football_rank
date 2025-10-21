@@ -27,6 +27,7 @@ from typing import List, Optional
 from .team import Team
 from .match_info import MatchInfo
 from .team_name_mapper import TeamNameMapper
+from .match_data import MatchDataManager
 
 
 class TeamInfoDialog(QDialog):
@@ -34,19 +35,28 @@ class TeamInfoDialog(QDialog):
     队伍信息对话框，用于展示队伍的详细信息、积分历史和比赛记录
     """
 
-    def __init__(self, team: Team, parent: Optional[QWidget] = None):
+    def __init__(
+        self,
+        team: Team,
+        match_data_manager: MatchDataManager = None,
+        parent: Optional[QWidget] = None,
+    ):
         """
         初始化队伍信息对话框
 
         参数:
             team: Team类实例，包含队伍的所有信息
+            match_data_manager: MatchDataManager实例，用于获取比赛详细数据
             parent: 父窗口组件
         """
         super().__init__(parent)
         self.team = team
+        self.match_data_manager = match_data_manager or MatchDataManager()
         self.elo_series = None  # 保存对elo系列的引用
         self.trueskill_series = None  # 保存对trueskill系列的引用
         self._init_ui()
+        # 初始化后更新比赛历史表格
+        self.update_match_history()
 
     def _init_ui(self):
         """
@@ -183,23 +193,24 @@ class TeamInfoDialog(QDialog):
         self.axis_y = QValueAxis()
         self.axis_y.setLabelFormat("%.0f")
         self.axis_y.setTitleText("积分值")
-        # 设置Y轴范围为800到2500
-        self.axis_y.setMin(800)
-        self.axis_y.setMax(2500)
+        # 移除固定范围设置，让图表根据数据动态调整Y轴范围
 
         # 创建并添加数据系列
-        self.elo_series = self._create_elo_series()
+        # 根据要求，只保留TrueSkill积分曲线
+        self.elo_series = self._create_elo_series()  # 保留方法调用但不添加到图表
         self.trueskill_series = self._create_trueskill_series()
 
-        self.chart.addSeries(self.elo_series)
+        # 只添加TrueSkill系列到图表
         self.chart.addSeries(self.trueskill_series)
         self.chart.addAxis(self.axis_x, Qt.AlignmentFlag.AlignBottom)
         self.chart.addAxis(self.axis_y, Qt.AlignmentFlag.AlignLeft)
 
-        self.elo_series.attachAxis(self.axis_x)
-        self.elo_series.attachAxis(self.axis_y)
+        # 只关联TrueSkill系列到坐标轴
         self.trueskill_series.attachAxis(self.axis_x)
         self.trueskill_series.attachAxis(self.axis_y)
+
+        # 动态调整Y轴范围，添加适当边距
+        self._adjust_y_axis_range()
 
         # 创建图表视图
         chart_view = QChartView(self.chart)
@@ -208,12 +219,7 @@ class TeamInfoDialog(QDialog):
         # 创建选择框布局
         checkbox_layout = QHBoxLayout()
 
-        # 创建Elo选择框
-        self.elo_checkbox = QCheckBox("elo")
-        self.elo_checkbox.setChecked(True)  # 初始状态为勾选
-        self.elo_checkbox.stateChanged.connect(self._on_elo_checkbox_changed)
-        checkbox_layout.addWidget(self.elo_checkbox)
-
+        # 根据要求，只保留TrueSkill选择框
         # 创建TrueSkill选择框
         self.trueskill_checkbox = QCheckBox("trueskill")
         self.trueskill_checkbox.setChecked(True)  # 初始状态为勾选
@@ -264,6 +270,7 @@ class TeamInfoDialog(QDialog):
     def _create_elo_series(self) -> QLineSeries:
         """
         创建Elo积分历史系列，使用队伍的实际比赛数据
+        注意：根据要求，现在只显示最近30场比赛的数据
         """
         series = QLineSeries()
         series.setName("Elo积分")
@@ -274,9 +281,13 @@ class TeamInfoDialog(QDialog):
         if match_infos:
             # 按日期排序
             sorted_matches = sorted(match_infos, key=lambda x: x.match_date)
+            # 只保留最近30场比赛
+            recent_matches = (
+                sorted_matches[-30:] if len(sorted_matches) > 30 else sorted_matches
+            )
 
             # 添加实际比赛数据
-            for match_info in sorted_matches:
+            for match_info in recent_matches:
                 # 确保match_date是有效的datetime对象
                 if isinstance(match_info.match_date, datetime):
                     timestamp = match_info.match_date.timestamp() * 1000
@@ -292,6 +303,7 @@ class TeamInfoDialog(QDialog):
         """
         创建TrueSkill积分历史系列，使用队伍的实际比赛数据
         注意：将mu值乘以25以避免因数值过低导致的显示问题
+        注意：根据要求，现在只显示最近30场比赛的数据
         """
         series = QLineSeries()
         series.setName("TrueSkill积分")
@@ -302,9 +314,13 @@ class TeamInfoDialog(QDialog):
         if match_infos:
             # 按日期排序
             sorted_matches = sorted(match_infos, key=lambda x: x.match_date)
+            # 只保留最近30场比赛
+            recent_matches = (
+                sorted_matches[-30:] if len(sorted_matches) > 30 else sorted_matches
+            )
 
             # 添加实际比赛数据，并将mu值乘以25
-            for match_info in sorted_matches:
+            for match_info in recent_matches:
                 # 确保match_date是有效的datetime对象
                 if isinstance(match_info.match_date, datetime):
                     timestamp = match_info.match_date.timestamp() * 1000
@@ -318,6 +334,37 @@ class TeamInfoDialog(QDialog):
             series.append(today.timestamp() * 1000, scaled_mu)
 
         return series
+
+    def _adjust_y_axis_range(self):
+        """
+        根据TrueSkill数据动态调整Y轴范围
+        添加5%的边距确保数据点完全可见
+        """
+        if self.trueskill_series.count() == 0:
+            return
+
+        # 获取系列中的所有点
+        points = self.trueskill_series.points()
+
+        # 提取所有Y值
+        y_values = [point.y() for point in points]
+
+        # 计算最小和最大值
+        min_y = min(y_values)
+        max_y = max(y_values)
+
+        # 计算范围和边距
+        value_range = max_y - min_y
+        margin = value_range * 0.05  # 添加5%的边距
+
+        # 设置新的Y轴范围
+        self.axis_y.setMin(min_y - margin)
+        self.axis_y.setMax(max_y + margin)
+
+        # 如果范围非常小（例如只有一个数据点），设置一个合理的默认范围
+        if value_range < 1:
+            self.axis_y.setMin(min_y - 10)
+            self.axis_y.setMax(max_y + 10)
 
     def _create_match_history_table(self, parent_layout: QVBoxLayout):
         """
@@ -338,7 +385,7 @@ class TeamInfoDialog(QDialog):
         self.match_table = QTableWidget()
         self.match_table.setColumnCount(5)
         self.match_table.setHorizontalHeaderLabels(
-            ["比赛日期", "对手", "比分", "比赛ID", "比赛类型"]
+            ["比赛日期", "比赛对手", "比分", "积分", "积分变化"]
         )
 
         # 设置表格列宽自适应
@@ -357,7 +404,7 @@ class TeamInfoDialog(QDialog):
     def update_match_history(self):
         """
         更新历史比赛表格数据
-        从team.match_info中获取数据并填充表格
+        从team.match_info中获取基本信息，并通过match_data_manager获取详细比赛数据
         """
         # 清空现有数据
         self.match_table.setRowCount(0)
@@ -365,52 +412,88 @@ class TeamInfoDialog(QDialog):
         # 获取队伍的比赛历史记录
         match_infos = self.team.get_match_info()
 
-        # 按照日期排序
-        sorted_matches = sorted(match_infos, key=lambda x: x.match_date, reverse=True)
+        # 按照日期排序（升序）以便计算积分变化
+        sorted_matches_asc = sorted(match_infos, key=lambda x: x.match_date)
+
+        # 创建一个映射，便于按ID查找上一场比赛的mu值
+        match_id_to_index = {
+            info.match_id: i for i, info in enumerate(sorted_matches_asc)
+        }
+
+        # 按照日期降序排列显示
+        sorted_matches_desc = sorted(
+            match_infos, key=lambda x: x.match_date, reverse=True
+        )
 
         # 填充表格
-        for match_info in sorted_matches:
+        for match_info in sorted_matches_desc:
             row_position = self.match_table.rowCount()
             self.match_table.insertRow(row_position)
 
-            # 填充数据（注意：这里只有比赛ID和日期信息，对手和比分需要额外获取）
+            # 尝试通过match_data_manager获取详细比赛数据
+            match_data = None
+            if self.match_data_manager:
+                try:
+                    match_data = self.match_data_manager.get_match_by_id(
+                        str(match_info.match_id)
+                    )
+                except Exception as e:
+                    print(f"获取比赛ID {match_info.match_id} 的详细数据时出错: {e}")
+
+            # 填充比赛日期
             self.match_table.setItem(
                 row_position,
                 0,
                 QTableWidgetItem(match_info.match_date.strftime("%Y-%m-%d")),
             )
+
+            # 填充对手信息
+            opponent = "未知对手"
+            if match_data:
+                # 判断当前队伍是主队还是客队
+                if match_data.get("HomeTeam") == self.team.name:
+                    opponent = match_data.get("AwayTeam", "未知对手")
+                else:
+                    opponent = match_data.get("HomeTeam", "未知对手")
+
+                # 使用TeamNameMapper将对手名称转换为中文
+                team_name_mapper = TeamNameMapper()
+                opponent = team_name_mapper.get_chinese_name(opponent)
+            self.match_table.setItem(row_position, 1, QTableWidgetItem(opponent))
+
+            # 填充比分信息
+            score = "未知比分"
+            if match_data:
+                home_score = match_data.get("FTHG", "-")
+                away_score = match_data.get("FTAG", "-")
+                # 判断当前队伍是主队还是客队，调整比分显示顺序
+                if match_data.get("HomeTeam") == self.team.name:
+                    score = f"{home_score} - {away_score}"
+                else:
+                    score = f"{away_score} - {home_score}"
+            self.match_table.setItem(row_position, 2, QTableWidgetItem(score))
+
+            # 填充积分信息（TrueSkill积分，mu*25）
+            current_mu = match_info.mu
+            scaled_mu = current_mu * 25
             self.match_table.setItem(
-                row_position,
-                1,
-                QTableWidgetItem("未知对手"),  # 需要额外数据支持
-            )
-            self.match_table.setItem(
-                row_position,
-                2,
-                QTableWidgetItem("未知比分"),  # 需要额外数据支持
-            )
-            self.match_table.setItem(
-                row_position, 3, QTableWidgetItem(str(match_info.match_id))
-            )
-            self.match_table.setItem(
-                row_position,
-                4,
-                QTableWidgetItem("联赛"),  # 默认类型
+                row_position, 3, QTableWidgetItem(f"{scaled_mu:.1f}")
             )
 
+            # 计算并填充积分变化
+            mu_change = 0.0
+            if match_info.match_id in match_id_to_index:
+                current_index = match_id_to_index[match_info.match_id]
+                if current_index > 0:  # 不是第一场比赛
+                    prev_match_info = sorted_matches_asc[current_index - 1]
+                    mu_change = current_mu - prev_match_info.mu
 
-if __name__ == "__main__":
-    # 简单测试代码
-    app = QApplication(sys.argv)
+            scaled_change = mu_change * 25
+            # 根据变化值设置不同的样式
+            change_item = QTableWidgetItem(f"{scaled_change:+.1f}")
+            if scaled_change > 0:
+                change_item.setForeground(Qt.GlobalColor.green)
+            elif scaled_change < 0:
+                change_item.setForeground(Qt.GlobalColor.red)
 
-    # 创建一个测试用的Team实例
-    test_team = Team("皇家马德里")
-    test_team.elo = 1855
-    test_team.mu = 1566
-    test_team.sigma = 10
-
-    # 创建并显示对话框
-    dialog = TeamInfoDialog(test_team)
-    dialog.exec()
-
-    sys.exit(app.exec())
+            self.match_table.setItem(row_position, 4, change_item)

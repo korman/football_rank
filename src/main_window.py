@@ -107,14 +107,16 @@ class RankingSystemMainWindow(QMainWindow):
 
                         # 获取比赛ID和日期
                         match_id = int(match.get("id", 0))
-                        match_date_str = match.get("Date", "")
+                        match_date_value = match.get("Date", "")
 
                         # 优先使用数据库中的比赛日期
-                        if match_date_str:
+                        if match_date_value:
                             try:
                                 # 首先检查是否是整数类型的时间戳
-                                if isinstance(match_date_str, int):
-                                    match_date = datetime.fromtimestamp(match_date_str)
+                                if isinstance(match_date_value, int):
+                                    match_date = datetime.fromtimestamp(
+                                        match_date_value
+                                    )
                                 else:
                                     # 尝试不同的日期格式，优先添加两位年份的日/月/年格式
                                     for fmt in [
@@ -125,7 +127,7 @@ class RankingSystemMainWindow(QMainWindow):
                                     ]:
                                         try:
                                             match_date = datetime.strptime(
-                                                match_date_str, fmt
+                                                match_date_value, fmt
                                             )
                                             break
                                         except ValueError:
@@ -134,7 +136,7 @@ class RankingSystemMainWindow(QMainWindow):
                                     else:
                                         match_date = datetime.now()
                                         logging.warning(
-                                            f"无法解析比赛日期: {match_date_str}，使用当前时间"
+                                            f"无法解析比赛日期: {match_date_value}，使用当前时间"
                                         )
                             except Exception as e:
                                 match_date = datetime.now()
@@ -271,7 +273,8 @@ class RankingSystemMainWindow(QMainWindow):
                 logging.info(f"找到对应的Team对象 - {team.name}")
                 # 创建并显示队伍信息对话框
                 print(f"调试信息: 创建并显示队伍信息对话框")
-                dialog = TeamInfoDialog(team, self)
+                # 让TeamInfoDialog自己创建MatchDataManager实例
+                dialog = TeamInfoDialog(team, parent=self)
                 result = dialog.exec()
                 print(f"调试信息: 对话框已关闭，返回结果: {result}")
             else:
