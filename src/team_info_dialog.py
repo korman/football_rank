@@ -434,20 +434,3 @@ class TeamInfoDialog(QDialog):
                 4,
                 QTableWidgetItem("联赛"),  # 默认类型
             )
-
-
-if __name__ == "__main__":
-    # 简单测试代码
-    app = QApplication(sys.argv)
-
-    # 创建一个测试用的Team实例
-    test_team = Team("皇家马德里")
-    test_team.elo = 1855
-    test_team.mu = 1566
-    test_team.sigma = 10
-
-    # 创建并显示对话框
-    dialog = TeamInfoDialog(test_team)
-    dialog.exec()
-
-    sys.exit(app.exec())
