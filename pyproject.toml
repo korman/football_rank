@@ -11,5 +11,6 @@ dependencies = [
     "pyqt6>=6.9.1",
     "pyqt6-charts>=6.9.0",
     "pytest>=8.4.2",
+    "requests>=2.32.5",
     "sqlite-utils>=3.38",
 ]
