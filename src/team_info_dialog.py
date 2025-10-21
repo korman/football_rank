@@ -1,0 +1,412 @@
+import sys
+import os
+from PyQt6.QtWidgets import (
+    QDialog,
+    QVBoxLayout,
+    QHBoxLayout,
+    QLabel,
+    QTableWidget,
+    QTableWidgetItem,
+    QHeaderView,
+    QFrame,
+    QWidget,
+    QCheckBox,
+)
+from PyQt6.QtGui import QPixmap, QFont, QPainter
+from PyQt6.QtCore import Qt
+from PyQt6.QtCharts import (
+    QChart,
+    QChartView,
+    QLineSeries,
+    QValueAxis,
+    QDateTimeAxis,
+    QLegend,
+)
+from datetime import datetime, timedelta
+from typing import List, Optional
+from .team import Team
+from .match_info import MatchInfo
+from .team_name_mapper import TeamNameMapper
+
+
+class TeamInfoDialog(QDialog):
+    """
+    队伍信息对话框，用于展示队伍的详细信息、积分历史和比赛记录
+    """
+
+    def __init__(self, team: Team, parent: Optional[QWidget] = None):
+        """
+        初始化队伍信息对话框
+
+        参数:
+            team: Team类实例，包含队伍的所有信息
+            parent: 父窗口组件
+        """
+        super().__init__(parent)
+        self.team = team
+        self.elo_series = None  # 保存对elo系列的引用
+        self.trueskill_series = None  # 保存对trueskill系列的引用
+        self._init_ui()
+
+    def _init_ui(self):
+        """
+        初始化对话框UI组件
+        """
+        self.setWindowTitle(f"{self.team.name} - 队伍信息")
+        self.setMinimumSize(800, 600)
+
+        # 创建主布局
+        main_layout = QVBoxLayout(self)
+
+        # 1. 创建队伍基本信息区域
+        self._create_team_info_section(main_layout)
+
+        # 2. 创建积分历史折线图区域
+        self._create_ranking_history_chart(main_layout)
+
+        # 3. 创建历史比赛表格区域
+        self._create_match_history_table(main_layout)
+
+    def _create_team_info_section(self, parent_layout: QVBoxLayout):
+        """
+        创建队伍基本信息区域，包含队标和基本数据
+        """
+        # 创建水平布局
+        info_layout = QHBoxLayout()
+
+        # 队标区域
+        logo_frame = QFrame()
+        logo_frame.setFixedSize(100, 100)
+        logo_frame.setFrameShape(QFrame.Shape.StyledPanel)
+        logo_frame.setFrameShadow(QFrame.Shadow.Raised)
+
+        # 加载默认队标图片
+        logo_label = QLabel(logo_frame)
+        logo_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "assets",
+            "team_logo",
+            "default.png",
+        )
+
+        if os.path.exists(logo_path):
+            pixmap = QPixmap(logo_path).scaled(
+                80,
+                80,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+            logo_label.setPixmap(pixmap)
+        logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        logo_layout = QVBoxLayout(logo_frame)
+        logo_layout.addWidget(logo_label)
+        logo_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        # 队伍信息区域
+        info_container = QWidget()
+        info_v_layout = QVBoxLayout(info_container)
+
+        # 队伍名称 - 使用中文显示
+        team_name_mapper = TeamNameMapper()
+        chinese_team_name = team_name_mapper.get_chinese_name(self.team.name)
+        team_name_label = QLabel(chinese_team_name)
+        team_name_font = QFont("SimHei", 28, QFont.Weight.Bold)  # 字号从24调整到28
+        team_name_label.setFont(team_name_font)
+        team_name_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
+
+        # 队伍积分信息
+        ranking_info_text = (
+            f"Elo积分: {self.team.elo:.0f}  "
+            f"Truskill积分: {self.team.mu:.0f}  "
+            f"稳定度: {self._calculate_stability():.1f}%"
+        )
+        ranking_info_label = QLabel(ranking_info_text)
+        ranking_info_label.setFont(QFont("SimHei", 12))
+
+        # 添加到垂直布局
+        info_v_layout.addWidget(team_name_label)
+        info_v_layout.addWidget(ranking_info_label)
+        info_v_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+
+        # 将队标和信息区域添加到水平布局
+        info_layout.addWidget(logo_frame)
+        info_layout.addWidget(info_container)
+        info_layout.addStretch()
+
+        # 添加到主布局
+        parent_layout.addLayout(info_layout)
+        parent_layout.addSpacing(20)
+
+    def _calculate_stability(self) -> float:
+        """
+        计算队伍评分的稳定度
+        稳定度 = (1 - sigma/mu) * 100%，但确保结果在0-100之间
+        """
+        if self.team.mu <= 0:
+            return 0.0
+        stability = (1 - self.team.sigma / self.team.mu) * 100
+        return max(0.0, min(100.0, stability))
+
+    def _create_ranking_history_chart(self, parent_layout: QVBoxLayout):
+        """
+        创建积分历史折线图区域
+        """
+        # 添加标题
+        chart_title_label = QLabel("积分历史:")
+        chart_title_label.setFont(QFont("SimHei", 14, QFont.Weight.Bold))
+        parent_layout.addWidget(chart_title_label)
+
+        # 创建图表容器
+        chart_frame = QFrame()
+        chart_frame.setFrameShape(QFrame.Shape.StyledPanel)
+        chart_frame.setFrameShadow(QFrame.Shadow.Raised)
+        chart_frame.setMinimumHeight(300)
+
+        # 创建图表
+        self.chart = QChart()
+        # 使用中文队名作为图表标题
+        team_name_mapper = TeamNameMapper()
+        chinese_team_name = team_name_mapper.get_chinese_name(self.team.name)
+        self.chart.setTitle(f"{chinese_team_name} 积分变化趋势")
+        self.chart.setAnimationOptions(QChart.AnimationOption.SeriesAnimations)
+        self.chart.legend().setVisible(True)
+        self.chart.legend().setAlignment(Qt.AlignmentFlag.AlignBottom)
+
+        # 创建坐标轴
+        self.axis_x = QDateTimeAxis()
+        self.axis_x.setTickCount(6)
+        self.axis_x.setFormat("yyyy-MM-dd")
+        self.axis_x.setTitleText("日期")
+
+        self.axis_y = QValueAxis()
+        self.axis_y.setLabelFormat("%.0f")
+        self.axis_y.setTitleText("积分值")
+
+        # 创建并添加数据系列
+        self.elo_series = self._create_elo_series()
+        self.trueskill_series = self._create_trueskill_series()
+
+        self.chart.addSeries(self.elo_series)
+        self.chart.addSeries(self.trueskill_series)
+        self.chart.addAxis(self.axis_x, Qt.AlignmentFlag.AlignBottom)
+        self.chart.addAxis(self.axis_y, Qt.AlignmentFlag.AlignLeft)
+
+        self.elo_series.attachAxis(self.axis_x)
+        self.elo_series.attachAxis(self.axis_y)
+        self.trueskill_series.attachAxis(self.axis_x)
+        self.trueskill_series.attachAxis(self.axis_y)
+
+        # 创建图表视图
+        chart_view = QChartView(self.chart)
+        chart_view.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        # 创建选择框布局
+        checkbox_layout = QHBoxLayout()
+
+        # 创建Elo选择框
+        self.elo_checkbox = QCheckBox("elo")
+        self.elo_checkbox.setChecked(True)  # 初始状态为勾选
+        self.elo_checkbox.stateChanged.connect(self._on_elo_checkbox_changed)
+        checkbox_layout.addWidget(self.elo_checkbox)
+
+        # 创建TrueSkill选择框
+        self.trueskill_checkbox = QCheckBox("trueskill")
+        self.trueskill_checkbox.setChecked(True)  # 初始状态为勾选
+        self.trueskill_checkbox.stateChanged.connect(
+            self._on_trueskill_checkbox_changed
+        )
+        checkbox_layout.addWidget(self.trueskill_checkbox)
+
+        checkbox_layout.addStretch()
+
+        # 将图表视图和选择框添加到容器
+        chart_layout = QVBoxLayout(chart_frame)
+        chart_layout.addWidget(chart_view)
+        chart_layout.addLayout(checkbox_layout)
+
+        # 添加到主布局
+        parent_layout.addWidget(chart_frame)
+        parent_layout.addSpacing(20)
+
+    def _on_elo_checkbox_changed(self, state):
+        """
+        处理Elo选择框状态变化
+        """
+        if self.elo_series:
+            is_checked = state == Qt.CheckState.Checked
+            self.elo_series.setVisible(is_checked)
+
+            # 确保在图表中正确显示
+            if is_checked and self.elo_series not in self.chart.series():
+                self.chart.addSeries(self.elo_series)
+                self.elo_series.attachAxis(self.axis_x)
+                self.elo_series.attachAxis(self.axis_y)
+
+    def _on_trueskill_checkbox_changed(self, state):
+        """
+        处理TrueSkill选择框状态变化
+        """
+        if self.trueskill_series:
+            is_checked = state == Qt.CheckState.Checked
+            self.trueskill_series.setVisible(is_checked)
+
+            # 确保在图表中正确显示
+            if is_checked and self.trueskill_series not in self.chart.series():
+                self.chart.addSeries(self.trueskill_series)
+                self.trueskill_series.attachAxis(self.axis_x)
+                self.trueskill_series.attachAxis(self.axis_y)
+
+    def _create_elo_series(self) -> QLineSeries:
+        """
+        创建Elo积分历史系列，使用队伍的实际比赛数据
+        """
+        series = QLineSeries()
+        series.setName("Elo积分")
+
+        # 获取队伍的历史比赛信息
+        match_infos = self.team.get_match_info()
+
+        if match_infos:
+            # 按日期排序
+            sorted_matches = sorted(match_infos, key=lambda x: x.match_date)
+
+            # 添加实际比赛数据
+            for match_info in sorted_matches:
+                # 确保match_date是有效的datetime对象
+                if isinstance(match_info.match_date, datetime):
+                    timestamp = match_info.match_date.timestamp() * 1000
+                    series.append(timestamp, match_info.elo)
+        else:
+            # 如果没有比赛数据，添加当前值作为参考
+            today = datetime.now()
+            series.append(today.timestamp() * 1000, self.team.elo)
+
+        return series
+
+    def _create_trueskill_series(self) -> QLineSeries:
+        """
+        创建TrueSkill积分历史系列，使用队伍的实际比赛数据
+        注意：将mu值乘以25以避免因数值过低导致的显示问题
+        """
+        series = QLineSeries()
+        series.setName("TrueSkill积分")
+
+        # 获取队伍的历史比赛信息
+        match_infos = self.team.get_match_info()
+
+        if match_infos:
+            # 按日期排序
+            sorted_matches = sorted(match_infos, key=lambda x: x.match_date)
+
+            # 添加实际比赛数据，并将mu值乘以25
+            for match_info in sorted_matches:
+                # 确保match_date是有效的datetime对象
+                if isinstance(match_info.match_date, datetime):
+                    timestamp = match_info.match_date.timestamp() * 1000
+                    # 将mu值乘以25
+                    scaled_mu = match_info.mu * 25
+                    series.append(timestamp, scaled_mu)
+        else:
+            # 如果没有比赛数据，添加当前值作为参考，并将mu值乘以25
+            today = datetime.now()
+            scaled_mu = self.team.mu * 25
+            series.append(today.timestamp() * 1000, scaled_mu)
+
+        return series
+
+    def _create_match_history_table(self, parent_layout: QVBoxLayout):
+        """
+        创建历史比赛表格区域
+        """
+        # 添加标题
+        table_title_label = QLabel("历史比赛:")
+        table_title_label.setFont(QFont("SimHei", 14, QFont.Weight.Bold))
+        parent_layout.addWidget(table_title_label)
+
+        # 创建表格容器
+        table_frame = QFrame()
+        table_frame.setFrameShape(QFrame.Shape.StyledPanel)
+        table_frame.setFrameShadow(QFrame.Shadow.Raised)
+        table_frame.setMinimumHeight(200)
+
+        # 创建表格
+        self.match_table = QTableWidget()
+        self.match_table.setColumnCount(5)
+        self.match_table.setHorizontalHeaderLabels(
+            ["比赛日期", "对手", "比分", "比赛ID", "比赛类型"]
+        )
+
+        # 设置表格列宽自适应
+        header = self.match_table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+
+        # 当前表格为空，后续可以通过队伍的match_info填充
+
+        # 将表格添加到容器
+        table_layout = QVBoxLayout(table_frame)
+        table_layout.addWidget(self.match_table)
+
+        # 添加到主布局
+        parent_layout.addWidget(table_frame)
+
+    def update_match_history(self):
+        """
+        更新历史比赛表格数据
+        从team.match_info中获取数据并填充表格
+        """
+        # 清空现有数据
+        self.match_table.setRowCount(0)
+
+        # 获取队伍的比赛历史记录
+        match_infos = self.team.get_match_info()
+
+        # 按照日期排序
+        sorted_matches = sorted(match_infos, key=lambda x: x.match_date, reverse=True)
+
+        # 填充表格
+        for match_info in sorted_matches:
+            row_position = self.match_table.rowCount()
+            self.match_table.insertRow(row_position)
+
+            # 填充数据（注意：这里只有比赛ID和日期信息，对手和比分需要额外获取）
+            self.match_table.setItem(
+                row_position,
+                0,
+                QTableWidgetItem(match_info.match_date.strftime("%Y-%m-%d")),
+            )
+            self.match_table.setItem(
+                row_position,
+                1,
+                QTableWidgetItem("未知对手"),  # 需要额外数据支持
+            )
+            self.match_table.setItem(
+                row_position,
+                2,
+                QTableWidgetItem("未知比分"),  # 需要额外数据支持
+            )
+            self.match_table.setItem(
+                row_position, 3, QTableWidgetItem(str(match_info.match_id))
+            )
+            self.match_table.setItem(
+                row_position,
+                4,
+                QTableWidgetItem("联赛"),  # 默认类型
+            )
+
+
+if __name__ == "__main__":
+    # 简单测试代码
+    app = QApplication(sys.argv)
+
+    # 创建一个测试用的Team实例
+    test_team = Team("皇家马德里")
+    test_team.elo = 1855
+    test_team.mu = 1566
+    test_team.sigma = 10
+
+    # 创建并显示对话框
+    dialog = TeamInfoDialog(test_team)
+    dialog.exec()
+
+    sys.exit(app.exec())

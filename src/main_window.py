@@ -1,4 +1,7 @@
 import sys
+import logging
+from datetime import datetime
+from typing import Optional
 from PyQt6.QtWidgets import (
     QApplication,
     QMainWindow,
@@ -14,6 +17,7 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QMessageBox,
 )
+from .team_info_dialog import TeamInfoDialog
 from .sqlite_importer import sqlite_importer
 from PyQt6.QtCore import Qt
 from .match_ranking import MatchRankingSystem
@@ -21,6 +25,7 @@ from .team_name_mapper import TeamNameMapper
 from .league_mapper import get_all_leagues, get_league_code
 from .match_data import MatchDataManager
 from .team_manager import TeamManager
+from .match_info import MatchInfo
 
 
 class RankingSystemMainWindow(QMainWindow):
@@ -93,6 +98,119 @@ class RankingSystemMainWindow(QMainWindow):
                         self.ranking_system.openskill_algorithm.process_match(
                             home, away, home_score, away_score
                         )
+
+                        # 获取当前比赛的mu、elo和sigma值
+                        # 对于HomeTeam
+                        home_team = self.team_manager.get_team(home)
+                        # 对于AwayTeam
+                        away_team = self.team_manager.get_team(away)
+
+                        # 获取比赛ID和日期
+                        match_id = int(match.get("id", 0))
+                        match_date_str = match.get("Date", "")
+
+                        # 优先使用数据库中的比赛日期
+                        if match_date_str:
+                            try:
+                                # 尝试不同的日期格式，优先添加两位年份的日/月/年格式
+                                for fmt in [
+                                    "%d/%m/%y",
+                                    "%Y-%m-%d",
+                                    "%d/%m/%Y",
+                                    "%d-%m-%Y",
+                                ]:
+                                    try:
+                                        match_date = datetime.strptime(
+                                            match_date_str, fmt
+                                        )
+                                        break
+                                    except ValueError:
+                                        continue
+                                # 如果所有格式都解析失败，才使用当前时间
+                                else:
+                                    match_date = datetime.now()
+                                    logging.warning(
+                                        f"无法解析比赛日期: {match_date_str}，使用当前时间"
+                                    )
+                            except Exception as e:
+                                match_date = datetime.now()
+                                logging.error(
+                                    f"解析日期时发生错误: {str(e)}，使用当前时间"
+                                )
+                        else:
+                            # 如果数据库中没有日期字段，使用当前时间作为备选方案
+                            match_date = datetime.now()
+                            logging.warning("数据库中没有找到比赛日期，使用当前时间")
+
+                        # 从ranking_system获取更新后的积分
+                        home_elo = self.ranking_system.elo_algorithm.teams.get(
+                            home, home_team.elo
+                        )
+                        away_elo = self.ranking_system.elo_algorithm.teams.get(
+                            away, away_team.elo
+                        )
+
+                        home_openskill = (
+                            self.ranking_system.openskill_algorithm.teams.get(home)
+                        )
+                        away_openskill = (
+                            self.ranking_system.openskill_algorithm.teams.get(away)
+                        )
+
+                        # 更新team_manager中的Team对象积分
+                        if home_team:
+                            home_mu = (
+                                home_openskill[0].mu if home_openskill else home_team.mu
+                            )
+                            home_sigma = (
+                                home_openskill[0].sigma
+                                if home_openskill
+                                else home_team.sigma
+                            )
+                            home_team.update_rating(home_elo, home_mu, home_sigma)
+
+                            # 当HomeTeam是Liverpool时，输出调试信息
+                            if home.lower() == "liverpool":
+                                print(
+                                    f"[调试] Liverpool比赛于{match_date.strftime('%Y-%m-%d')}结束，计算后积分 - ELO: {home_elo}, TrueSkill: {home_mu:.2f}"
+                                )
+
+                            # 创建并添加MatchInfo
+                            home_match_info = MatchInfo(
+                                match_id=match_id,
+                                mu=home_mu,
+                                elo=home_elo,
+                                sigma=home_sigma,
+                                match_date=match_date,
+                            )
+                            home_team.add_match_info(home_match_info)
+
+                        # 为AwayTeam更新积分并创建MatchInfo
+                        if away_team:
+                            away_mu = (
+                                away_openskill[0].mu if away_openskill else away_team.mu
+                            )
+                            away_sigma = (
+                                away_openskill[0].sigma
+                                if away_openskill
+                                else away_team.sigma
+                            )
+                            away_team.update_rating(away_elo, away_mu, away_sigma)
+
+                            # 当AwayTeam是Liverpool时，输出调试信息
+                            if away.lower() == "liverpool":
+                                print(
+                                    f"[调试] Liverpool比赛于{match_date.strftime('%Y-%m-%d')}结束，计算后积分 - ELO: {away_elo}, TrueSkill: {away_mu:.2f}"
+                                )
+
+                            away_match_info = MatchInfo(
+                                match_id=match_id,
+                                mu=away_mu,
+                                elo=away_elo,
+                                sigma=away_sigma,
+                                match_date=match_date,
+                            )
+                            away_team.add_match_info(away_match_info)
             else:
                 # 处理所有比赛
                 self.ranking_system.process_all_matches()
@@ -103,6 +221,80 @@ class RankingSystemMainWindow(QMainWindow):
 
         except Exception as e:
             print(f"加载数据时出错: {e}")
+
+    def on_cell_clicked(self, row, column):
+        """表格单元格双击事件处理函数"""
+        # 输出调试信息
+        print(f"调试信息: 双击事件触发 - 行号: {row}, 列号: {column}")
+        logging.info(f"双击事件触发 - 行号: {row}, 列号: {column}")
+
+        # 获取队伍名（无论双击哪一列，都从第0列获取队伍名）
+        team_name_item = self.ranking_table.item(row, 0)
+        if team_name_item:
+            display_name = team_name_item.text()
+            print(f"调试信息: 获取到显示的队伍名 - '{display_name}'")
+            logging.info(f"获取到显示的队伍名 - '{display_name}'")
+
+            # 实现从中文队名查找英文队名的功能
+            def get_standard_name(chinese_name):
+                # 反向遍历mapping字典，找到对应的英文队名
+                for eng_name, chn_name in self.team_mapper.mapping.items():
+                    if chn_name == chinese_name:
+                        return eng_name
+                return None
+
+            # 先尝试通过反向映射获取系统名称（英文队名）
+            system_name = get_standard_name(display_name)
+            print(f"调试信息: 通过反向映射转换后的系统名称 - '{system_name}'")
+
+            # 尝试从TeamManager获取对应的Team对象
+            team = None
+            # 先尝试使用映射后的系统名称查找
+            if system_name and system_name != display_name:
+                print(f"调试信息: 尝试使用映射后的名称获取队伍 - '{system_name}'")
+                team = self.team_manager.get_team(system_name)
+
+            # 如果映射查找失败，尝试直接使用显示名称查找
+            if not team:
+                print(f"调试信息: 尝试直接使用显示名称获取队伍 - '{display_name}'")
+                team = self.team_manager.get_team(display_name)
+
+            # 如果仍然找不到，尝试在所有队伍中进行模糊匹配
+            if not team:
+                print(f"调试信息: 尝试在所有队伍中进行模糊匹配")
+                all_teams = self.team_manager.get_all_teams()
+                # 转换为小写进行模糊匹配
+                display_lower = display_name.lower()
+                for t in all_teams:
+                    if (
+                        display_lower in t.name.lower()
+                        or t.name.lower() in display_lower
+                    ):
+                        team = t
+                        print(f"调试信息: 模糊匹配成功 - 找到了 '{t.name}'")
+                        break
+
+            if team:
+                print(f"调试信息: 找到对应的Team对象 - {team.name}")
+                logging.info(f"找到对应的Team对象 - {team.name}")
+                # 创建并显示队伍信息对话框
+                print(f"调试信息: 创建并显示队伍信息对话框")
+                dialog = TeamInfoDialog(team, self)
+                result = dialog.exec()
+                print(f"调试信息: 对话框已关闭，返回结果: {result}")
+            else:
+                # 添加失败情况下的详细调试信息
+                print(f"调试信息: 未找到对应的Team对象 - '{display_name}'")
+                logging.warning(f"未找到对应的Team对象 - '{display_name}'")
+                # 获取TeamManager中的所有队伍名称进行对比
+                all_teams = self.team_manager.get_all_teams()
+                print(f"调试信息: TeamManager中共有 {len(all_teams)} 支队伍")
+                # 打印前5支队伍名称作为参考
+                if all_teams:
+                    print(f"调试信息: 部分队伍列表: {[t.name for t in all_teams[:5]]}")
+        else:
+            print(f"调试信息: 未能获取到第{row}行的队伍名")
+            logging.warning(f"未能获取到第{row}行的队伍名")
 
     def init_ui(self):
         # 设置窗口标题和大小
@@ -196,6 +388,9 @@ class RankingSystemMainWindow(QMainWindow):
 
         # 禁用编辑
         self.ranking_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+
+        # 添加单元格双击事件
+        self.ranking_table.cellDoubleClicked.connect(self.on_cell_clicked)
 
         # 添加表格到布局
         table_layout.addWidget(self.ranking_table)
@@ -392,6 +587,3 @@ class RankingSystemMainWindow(QMainWindow):
                 "导入完成",
                 f"所有文件导入完成!\n总计导入: {total_imported} 行\n跳过重复: {total_skipped} 行",
             )
-
-
-# 主窗口类已定义，主函数已移至项目根目录的main.py文件中
