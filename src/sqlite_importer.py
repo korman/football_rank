@@ -3,6 +3,7 @@ import os
 import csv
 import logging
 from typing import Dict, Any, Optional
+from datetime import datetime
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)
@@ -85,7 +86,7 @@ class SQLiteImporter:
                 CREATE TABLE matches (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     Div TEXT,
-                    Date TEXT,
+                    Date INTEGER,  -- 存储时间戳
                     HomeTeam TEXT,
                     AwayTeam TEXT,
                     FTHG TEXT,
@@ -176,9 +177,83 @@ class SQLiteImporter:
 
                     # 准备要插入的数据
                     # 只提取表中存在的字段
+
+                    # 处理Date字段，转换为时间戳
+                    date_str = row.get("Date", "")
+                    timestamp = None
+
+                    if date_str:
+                        try:
+                            # 尝试多种日期格式解析
+                            # 首先尝试格式1: '21/08/2020,18:00'（包含逗号分隔的时间）
+                            if "," in date_str:
+                                date_parts = date_str.split(",")
+                                date_part = date_parts[0].strip()
+                                time_part = date_parts[1].strip()
+                                # 检查date_part是否为简写年份格式
+                                if len(date_part) == 8 and date_part.count("/") == 2:
+                                    # 尝试简写年份格式 '14/08/10'
+                                    try:
+                                        dt = datetime.strptime(
+                                            f"{date_part} {time_part}", "%d/%m/%y %H:%M"
+                                        )
+                                        timestamp = int(dt.timestamp())
+                                    except ValueError:
+                                        # 如果简写年份失败，尝试完整年份
+                                        dt = datetime.strptime(
+                                            f"{date_part} {time_part}", "%d/%m/%Y %H:%M"
+                                        )
+                                        timestamp = int(dt.timestamp())
+                                else:
+                                    # 默认使用完整年份格式
+                                    dt = datetime.strptime(
+                                        f"{date_part} {time_part}", "%d/%m/%Y %H:%M"
+                                    )
+                                    timestamp = int(dt.timestamp())
+                            else:
+                                # 尝试格式2: '12/08/2017'（不包含时间）
+                                try:
+                                    # 先尝试直接解析为日期
+                                    if len(date_str) == 8 and date_str.count("/") == 2:
+                                        # 尝试简写年份格式 '14/08/10'
+                                        dt = datetime.strptime(date_str, "%d/%m/%y")
+                                    else:
+                                        # 默认使用完整年份格式
+                                        dt = datetime.strptime(date_str, "%d/%m/%Y")
+                                    # 补充18:00时间
+                                    dt = dt.replace(hour=18, minute=0, second=0)
+                                    timestamp = int(dt.timestamp())
+                                except ValueError:
+                                    # 尝试格式3: '21/08/2020 18:00'（空格分隔的时间）
+                                    # 检查是否包含时间的简写年份格式
+                                    if (
+                                        len(date_str) > 8
+                                        and date_str.count("/") == 2
+                                        and " " in date_str
+                                    ):
+                                        try:
+                                            dt = datetime.strptime(
+                                                date_str, "%d/%m/%y %H:%M"
+                                            )
+                                            timestamp = int(dt.timestamp())
+                                        except ValueError:
+                                            dt = datetime.strptime(
+                                                date_str, "%d/%m/%Y %H:%M"
+                                            )
+                                            timestamp = int(dt.timestamp())
+                                    else:
+                                        dt = datetime.strptime(
+                                            date_str, "%d/%m/%Y %H:%M"
+                                        )
+                                        timestamp = int(dt.timestamp())
+                        except ValueError:
+                            # 如果所有格式都解析失败，记录警告
+                            logger.warning(f"无法解析日期格式: {date_str}")
+                            timestamp = None
+
                     data = {
                         "Div": row.get("Div", ""),
-                        "Date": row.get("Date", ""),
+                        "Date": timestamp,
                         "HomeTeam": row.get("HomeTeam", ""),
                         "AwayTeam": row.get("AwayTeam", ""),
                         "FTHG": row.get("FTHG", ""),

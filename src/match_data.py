@@ -7,6 +7,7 @@ import logging
 import os
 import sys
 import sqlite3
+from datetime import datetime
 
 # 添加更全面的路径设置，确保能够找到必要的模块
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -362,7 +363,27 @@ class MatchDataManager:
                         # 移除方括号（如果有的话）
                         if col.startswith("[") and col.endswith("]"):
                             col = col[1:-1]
-                        match_dict[col] = row[i]
+
+                        # 处理Date字段，确保它是时间戳格式
+                        if col == "Date" and row[i] is not None:
+                            # 如果已经是整数类型，直接保留（时间戳格式）
+                            if isinstance(row[i], int):
+                                match_dict[col] = row[i]
+                            else:
+                                # 如果是字符串，尝试转换为时间戳
+                                try:
+                                    # 尝试将字符串转换为时间戳
+                                    # 注意：这里根据实际存储格式可能需要调整
+                                    timestamp = int(row[i])
+                                    match_dict[col] = timestamp
+                                except (ValueError, TypeError):
+                                    # 如果无法转换，记录警告并保持原样
+                                    logger.warning(
+                                        f"无法将日期值'{row[i]}'转换为时间戳"
+                                    )
+                                    match_dict[col] = row[i]
+                        else:
+                            match_dict[col] = row[i]
                     matches.append(match_dict)
 
                 print(f"SQLite查询结果: 找到{len(matches)}条数据")
@@ -374,7 +395,12 @@ class MatchDataManager:
                     return self._filter_mock_data(filters, limit)
 
                 # 确保返回的数据按日期从早到晚排序
-                matches.sort(key=lambda x: x.get("Date", ""))
+                # 对于时间戳，我们需要特殊处理排序逻辑
+                matches.sort(
+                    key=lambda x: (
+                        x.get("Date", 0) if isinstance(x.get("Date"), int) else 0
+                    )
+                )
 
                 # 输出前3条数据的简要信息作为示例
                 if matches:
