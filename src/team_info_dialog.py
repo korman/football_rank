@@ -118,7 +118,7 @@ class TeamInfoDialog(QDialog):
         # 队伍积分信息
         ranking_info_text = (
             f"Elo积分: {self.team.elo:.0f}  "
-            f"Truskill积分: {self.team.mu:.0f}  "
+            f"Truskill积分: {self.team.mu * 25:.0f}  "
             f"稳定度: {self._calculate_stability():.1f}%"
         )
         ranking_info_label = QLabel(ranking_info_text)
@@ -142,6 +142,7 @@ class TeamInfoDialog(QDialog):
         """
         计算队伍评分的稳定度
         稳定度 = (1 - sigma/mu) * 100%，但确保结果在0-100之间
+        注意：这里直接使用mu和sigma的原始值计算，因为稳定度是相对比率
         """
         if self.team.mu <= 0:
             return 0.0
