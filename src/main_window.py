@@ -169,6 +169,12 @@ class RankingSystemMainWindow(QMainWindow):
                             )
                             home_team.update_rating(home_elo, home_mu, home_sigma)
 
+                            # 当HomeTeam是Liverpool时，输出调试信息
+                            if home.lower() == "liverpool":
+                                print(
+                                    f"[调试] Liverpool比赛于{match_date.strftime('%Y-%m-%d')}结束，计算后积分 - ELO: {home_elo}, TrueSkill: {home_mu:.2f}"
+                                )
+
                             # 创建并添加MatchInfo
                             home_match_info = MatchInfo(
                                 match_id=match_id,
@@ -190,6 +196,12 @@ class RankingSystemMainWindow(QMainWindow):
                                 else away_team.sigma
                             )
                             away_team.update_rating(away_elo, away_mu, away_sigma)
+
+                            # 当AwayTeam是Liverpool时，输出调试信息
+                            if away.lower() == "liverpool":
+                                print(
+                                    f"[调试] Liverpool比赛于{match_date.strftime('%Y-%m-%d')}结束，计算后积分 - ELO: {away_elo}, TrueSkill: {away_mu:.2f}"
+                                )
 
                             away_match_info = MatchInfo(
                                 match_id=match_id,
