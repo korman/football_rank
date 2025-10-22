@@ -64,6 +64,16 @@ class FootballDataFetcher(QObject):
     def on_data_ready(self, data):
         """处理成功数据"""
         print("数据获取成功")
+
+        # 将获取到的JSON数据保存到本地文件
+        try:
+            with open("temp_response.json", "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=4, ensure_ascii=False)
+            print("数据已保存到temp_response.json文件")
+        except Exception as e:
+            print(f"保存数据到文件时出错: {str(e)}")
+            self.errorOccurred.emit(f"保存数据失败: {str(e)}")
+
         self.dataFetched.emit(data)
 
     def on_error(self, error_msg):
