@@ -565,12 +565,35 @@ class RankingSystemMainWindow(QMainWindow):
 
     def start_data_fetching(self):
         """开始获取比赛数据"""
+        # 确保导入timedelta和logging
+        from datetime import datetime, timedelta
+        import logging
+
+        # 配置日志记录
+        logging.basicConfig(
+            level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+        )
+
         print("开始获取比赛数据...")
 
-        # 严格按照原始需求：起始日期设置为2000年1月1日
-        # 结束日期设置为2000年1月2日（获取一天的数据范围）
-        self.start_date = datetime(2000, 10, 1)
-        self.end_date = self.start_date + timedelta(days=1)  # 结束日期为次日
+        # 确保MatchParser实例已正确初始化
+        if not hasattr(self, "match_parser"):
+            print("[初始化错误] 未找到MatchParser实例")
+            return
+
+        # 确保数据库连接正常
+        if not self.match_parser.conn:
+            try:
+                self.match_parser.connect()
+                print("[数据库] 成功连接到SQLite数据库")
+            except Exception as e:
+                print(f"[数据库错误] 连接数据库失败: {str(e)}")
+                return
+
+        # 起始日期设置为2005年7月1日
+        self.start_date = datetime(2005, 7, 1)
+        # 结束日期设置为当前日期
+        self.end_date = datetime.now()
 
         # 格式化为YYYY-MM-DD格式
         self.start_date_str = self.start_date.strftime("%Y-%m-%d")
@@ -586,31 +609,82 @@ class RankingSystemMainWindow(QMainWindow):
             "CL",  # 欧冠
         ]
 
-        # 初始化联赛索引，用于按顺序获取各联赛数据
+        # 初始化联赛索引和批次标志
         self.current_league_index = 0
         self.league_codes = league_codes
+        self.is_new_batch = True  # 标记是否为新的数据批次
+
+        print(
+            f"[配置信息] 数据获取配置: 起始日期={self.start_date_str}, 结束日期={self.end_date_str}, 联赛总数={len(league_codes)}"
+        )
 
         # 开始获取第一个联赛的数据
         self.fetch_next_league()
 
     def fetch_next_league(self):
         """获取下一个联赛的数据"""
-        if self.current_league_index < len(self.league_codes):
-            league_code = self.league_codes[self.current_league_index]
+        print(
+            f"\n[循环状态] 当前日期: {self.start_date_str}, 当前联赛索引: {self.current_league_index}/{len(self.league_codes)}, 新批次标记: {self.is_new_batch}"
+        )
+
+        # 检查当前日期是否超过结束日期（总体结束条件）
+        if self.start_date > self.end_date:
             print(
-                f"开始获取 {league_code} 联赛 {self.start_date_str} 到 {self.end_date_str} 的比赛数据"
+                f"[所有完成] 所有日期范围的数据获取已全部完成！当前日期 {self.start_date_str} 已达到或超过结束日期 {self.end_date_str}"
             )
-            self.football_fetcher.fetch_matches(
-                league_code, self.start_date_str, self.end_date_str
+            # 刷新当前界面显示的数据
+            if self.current_league:
+                print(f"[循环结束] 刷新当前联赛 {self.current_league} 数据...")
+                self._load_and_process_data(self.current_league)
+            return
+
+        # 如果是新的批次，准备日期范围
+        if self.is_new_batch:
+            # 计算并打印当前处理的日期范围
+            batch_end_date = min(self.start_date + timedelta(days=7), self.end_date)
+            batch_end_date_str = batch_end_date.strftime("%Y-%m-%d")
+            print(
+                f"[新批次开始] 开始处理日期范围: {self.start_date_str} 到 {batch_end_date_str}"
             )
-        else:
-            print("所有联赛数据获取完毕")
+            self.is_new_batch = False
+
+        # 检查是否所有联赛都已处理完毕
+        if self.current_league_index >= len(self.league_codes):
+            print(
+                f"[批次完成] 当前日期范围 {self.start_date_str} 的所有联赛数据获取完毕"
+            )
+            # 递增日期7天，准备下一批次数据获取
+            self.start_date += timedelta(days=7)
+            self.start_date_str = self.start_date.strftime("%Y-%m-%d")
+            print(f"[日期递增] 日期范围已递增7天，新的开始日期: {self.start_date_str}")
+
+            # 标记为新批次，重置联赛索引
+            self.is_new_batch = True
+            self.current_league_index = 0
+            print(f"[批次重置] 重置联赛索引为0，准备处理下一批次")
+
+            # 递归调用继续处理下一批次
+            self.fetch_next_league()
+            return
+
+        # 获取当前联赛数据
+        league_code = self.league_codes[self.current_league_index]
+        # 计算当前批次的结束日期（最多7天后或到整体结束日期）
+        batch_end_date = min(self.start_date + timedelta(days=7), self.end_date)
+        batch_end_date_str = batch_end_date.strftime("%Y-%m-%d")
+
+        print(
+            f"[数据获取] 开始获取 {league_code} 联赛 {self.start_date_str} 到 {batch_end_date_str} 的比赛数据"
+        )
+        self.football_fetcher.fetch_matches(
+            league_code, self.start_date_str, batch_end_date_str
+        )
 
     def on_data_fetched(self, data):
         """处理成功获取的JSON数据"""
         league_code = self.league_codes[self.current_league_index]
         print(
-            f"成功获取到 {league_code} 联赛数据，包含 {len(data.get('matches', []))} 场比赛"
+            f"[数据处理] 成功获取到 {league_code} 联赛数据，包含 {len(data.get('matches', []))} 场比赛"
         )
 
         # 将数据转换为JSON字符串
@@ -626,37 +700,32 @@ class RankingSystemMainWindow(QMainWindow):
 
             # 解析并存储数据
             inserted_count = self.match_parser.parse_and_store(json_str)
-            print(f"成功解析并存储了 {inserted_count} 条比赛记录")
+            print(f"[数据存储] 成功解析并存储了 {inserted_count} 条比赛记录")
 
         except Exception as e:
-            print(f"解析或存储数据时出错: {str(e)}")
+            print(f"[数据错误] 解析或存储数据时出错: {str(e)}")
             # 移除对话框，避免卡顿
-            print("处理错误: " + str(e))
+            print("[数据错误] 处理错误: " + str(e))
 
         # 处理完当前联赛后，继续获取下一个联赛的数据
         self.current_league_index += 1
+        print(
+            f"[索引递增] 联赛索引已递增到: {self.current_league_index}/{len(self.league_codes)}"
+        )
 
-        # 判断是否所有联赛都已处理完毕
-        if self.current_league_index >= len(self.league_codes):
-            print("所有联赛数据获取完毕")
-            # 所有联赛数据获取完毕后，刷新当前界面显示的数据
-            if self.current_league:
-                print(f"刷新当前联赛 {self.current_league} 数据...")
-                self._load_and_process_data(self.current_league)
-        else:
-            # 添加5秒延迟后再获取下一个联赛的数据
-            print("设置5秒后获取下一个联赛数据...")
-            from PyQt6.QtCore import QTimer
+        # 添加5秒延迟后再获取下一个联赛的数据
+        print("[延迟设置] 设置5秒后获取下一个联赛数据...")
+        from PyQt6.QtCore import QTimer
 
-            QTimer.singleShot(5000, self.fetch_next_league)
+        QTimer.singleShot(5000, self.fetch_next_league)
 
     def on_fetch_error(self, error_msg):
         """处理获取数据时的错误"""
         league_code = self.league_codes[self.current_league_index]
-        print(f"获取 {league_code} 联赛数据时出错: {error_msg}")
+        print(f"[错误处理] 获取 {league_code} 联赛数据时出错: {error_msg}")
 
         # 移除对话框，避免卡顿
-        print(f"获取错误: 获取 {league_code} 联赛数据时出错: {error_msg}")
+        print(f"[错误处理] 获取错误: 获取 {league_code} 联赛数据时出错: {error_msg}")
 
         # 检查是否为403错误（权限限制）
         import json
@@ -666,27 +735,22 @@ class RankingSystemMainWindow(QMainWindow):
                 # 尝试解析可能包含在错误消息中的JSON
                 error_obj = json.loads(error_msg)
                 if error_obj.get("errorCode") == 403:
-                    print(f"权限错误: {error_obj.get('message')}")
+                    print(f"[权限错误] 权限错误: {error_obj.get('message')}")
         except:
             # 如果解析失败，继续正常流程
             pass
 
         # 即使出错，也继续获取下一个联赛的数据
         self.current_league_index += 1
+        print(
+            f"[索引递增] 联赛索引已递增到: {self.current_league_index}/{len(self.league_codes)}"
+        )
 
-        # 判断是否所有联赛都已处理完毕
-        if self.current_league_index >= len(self.league_codes):
-            print("所有联赛数据获取完毕")
-            # 所有联赛数据获取完毕后，刷新当前界面显示的数据
-            if self.current_league:
-                print(f"刷新当前联赛 {self.current_league} 数据...")
-                self._load_and_process_data(self.current_league)
-        else:
-            # 添加5秒延迟后再获取下一个联赛的数据
-            print("设置5秒后获取下一个联赛数据...")
-            from PyQt6.QtCore import QTimer
+        # 添加5秒延迟后再获取下一个联赛的数据
+        print("[延迟设置] 设置5秒后获取下一个联赛数据...")
+        from PyQt6.QtCore import QTimer
 
-            QTimer.singleShot(5000, self.fetch_next_league)
+        QTimer.singleShot(5000, self.fetch_next_league)
 
     def on_import_data(self):
         """
