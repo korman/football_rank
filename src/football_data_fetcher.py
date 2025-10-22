@@ -65,88 +65,9 @@ class FootballDataFetcher(QObject):
         """处理成功数据"""
         print("数据获取成功")
 
-        # 将获取到的JSON数据保存到本地文件
-        try:
-            with open("temp_response.json", "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=4, ensure_ascii=False)
-            print("数据已保存到temp_response.json文件")
-        except Exception as e:
-            print(f"保存数据到文件时出错: {str(e)}")
-            self.errorOccurred.emit(f"保存数据失败: {str(e)}")
-
         self.dataFetched.emit(data)
 
     def on_error(self, error_msg):
         """处理错误"""
         print("数据获取失败:", error_msg)
         self.errorOccurred.emit(error_msg)
-
-
-# 使用示例（在 PyQt6 应用中）
-if __name__ == "__main__":
-    import sys
-    from PyQt6.QtWidgets import QApplication
-    from PyQt6.QtCore import QTimer, QCoreApplication
-
-    print("创建QApplication实例")
-    app = QApplication([])
-
-    # 设置应用程序信息
-    QCoreApplication.setApplicationName("FootballDataFetcher")
-
-    print("创建FootballDataFetcher实例")
-    api_key = "925538c2d157429ca8cd7f73a97cd974"
-    fetcher = FootballDataFetcher(api_key)
-
-    # 创建一个简单的类来跟踪状态
-    class ResponseTracker:
-        def __init__(self):
-            self.received = False
-
-    print("创建响应跟踪器")
-    tracker = ResponseTracker()
-
-    # 连接信号
-    print("连接信号和槽函数")
-
-    def on_data_received(data):
-        print("接收到数据信号！")
-        # 输出完整的JSON数据
-        import json
-
-        print("完整数据内容:")
-        print(json.dumps(data, indent=4, ensure_ascii=False))
-        tracker.received = True
-        print("设置响应标志为True")
-        # 收到响应后1秒退出应用
-        print("设置1秒后退出应用")
-        QTimer.singleShot(1000, app.quit)
-
-    def on_error_received(msg):
-        print(f"接收到错误信号: {msg}")
-        tracker.received = True
-        print("设置响应标志为True")
-        # 收到错误后1秒退出应用
-        print("设置1秒后退出应用")
-        QTimer.singleShot(1000, app.quit)
-
-    fetcher.dataFetched.connect(on_data_received)
-    fetcher.errorOccurred.connect(on_error_received)
-
-    # 请求示例：最近10天英超
-    print("准备日期参数")
-    today = datetime.now().strftime("%Y-%m-%d")
-    from_date = (datetime.now() - timedelta(days=10)).strftime("%Y-%m-%d")
-    print(f"日期范围: {from_date} 到 {today}")
-
-    print("调用fetch_matches方法")
-    fetcher.fetch_matches("PL", from_date, today)
-
-    # 设置一个超时，以防请求永远不返回
-    print("设置60秒超时")
-    QTimer.singleShot(
-        10000, lambda: not tracker.received and (print("超时，退出应用"), app.quit())
-    )
-
-    print("启动应用程序事件循环")
-    sys.exit(app.exec())
