@@ -49,7 +49,23 @@ class FootballDataFetcher(QObject):
             else:
                 print(f"响应失败，状态码: {response.status_code}")
                 print(f"响应内容: {response.text}")
-                self.on_error(f"HTTP错误: {response.status_code} - {response.reason}")
+                # 尝试解析JSON格式的错误响应
+                try:
+                    error_data = response.json()
+                    if "errorCode" in error_data:
+                        # 处理标准格式的错误响应
+                        error_msg = json.dumps(error_data)
+                        self.on_error(error_msg)
+                    else:
+                        # 非标准JSON响应
+                        self.on_error(
+                            f"HTTP错误: {response.status_code} - {response.reason}"
+                        )
+                except:
+                    # 非JSON响应
+                    self.on_error(
+                        f"HTTP错误: {response.status_code} - {response.reason}"
+                    )
 
         except requests.Timeout:
             print("请求超时")
