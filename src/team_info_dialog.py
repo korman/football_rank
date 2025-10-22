@@ -13,7 +13,18 @@ from PyQt6.QtWidgets import (
     QCheckBox,
 )
 from PyQt6.QtGui import QPixmap, QFont, QPainter
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
+
+
+# 添加关闭对话框信号类
+class CloseSignalDialog(QDialog):
+    closed = pyqtSignal()
+
+    def closeEvent(self, event):
+        self.closed.emit()
+        super().closeEvent(event)
+
+
 from PyQt6.QtCharts import (
     QChart,
     QChartView,
@@ -30,7 +41,7 @@ from .team_name_mapper import TeamNameMapper
 from .match_data import MatchDataManager
 
 
-class TeamInfoDialog(QDialog):
+class TeamInfoDialog(CloseSignalDialog):
     """
     队伍信息对话框，用于展示队伍的详细信息、积分历史和比赛记录
     """

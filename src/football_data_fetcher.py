@@ -145,7 +145,7 @@ if __name__ == "__main__":
     # 设置一个超时，以防请求永远不返回
     print("设置60秒超时")
     QTimer.singleShot(
-        60000, lambda: not tracker.received and (print("超时，退出应用"), app.quit())
+        10000, lambda: not tracker.received and (print("超时，退出应用"), app.quit())
     )
 
     print("启动应用程序事件循环")

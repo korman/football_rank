@@ -1,6 +1,6 @@
 import sys
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 from PyQt6.QtWidgets import (
     QApplication,
@@ -17,15 +17,17 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QMessageBox,
 )
+from PyQt6.QtCore import Qt, QTimer
 from .team_info_dialog import TeamInfoDialog
 from .sqlite_importer import sqlite_importer
-from PyQt6.QtCore import Qt
 from .match_ranking import MatchRankingSystem
 from .team_name_mapper import TeamNameMapper
 from .league_mapper import get_all_leagues, get_league_code
 from .match_data import MatchDataManager
 from .team_manager import TeamManager
 from .match_info import MatchInfo
+from .football_data_fetcher import FootballDataFetcher
+from .match_parser import MatchParser
 
 
 class RankingSystemMainWindow(QMainWindow):
@@ -43,9 +45,16 @@ class RankingSystemMainWindow(QMainWindow):
         self.team_manager = TeamManager()
         # 当前选中的联赛
         self.current_league = None
+
+        # 初始化足球数据获取器和解析器
+        self.init_data_fetcher()
+
         # 初始化界面
         self.init_ui()
         # 初始不加载数据，等待用户选择联赛
+
+        # 启动数据获取（延迟执行，确保界面已加载完成）
+        QTimer.singleShot(1000, self.start_data_fetching)  # 只执行一次
 
     def _load_and_process_data(self, league_name=None):
         """加载并处理指定联赛的比赛数据"""
@@ -275,6 +284,10 @@ class RankingSystemMainWindow(QMainWindow):
                 print(f"调试信息: 创建并显示队伍信息对话框")
                 # 让TeamInfoDialog自己创建MatchDataManager实例
                 dialog = TeamInfoDialog(team, parent=self)
+                # 连接关闭信号到数据刷新方法
+                dialog.closed.connect(
+                    lambda: self._load_and_process_data(self.current_league)
+                )
                 result = dialog.exec()
                 print(f"调试信息: 对话框已关闭，返回结果: {result}")
             else:
@@ -532,6 +545,129 @@ class RankingSystemMainWindow(QMainWindow):
             print(f"加载OpenSkill排名出错: {e}")
             return []
 
+    def init_data_fetcher(self):
+        """初始化足球数据获取器和解析器"""
+        # 初始化FootballDataFetcher
+        api_key = "925538c2d157429ca8cd7f73a97cd974"  # 使用从示例中获取的API密钥
+        self.football_fetcher = FootballDataFetcher(api_key)
+
+        # 连接信号和槽函数
+        self.football_fetcher.dataFetched.connect(self.on_data_fetched)
+        self.football_fetcher.errorOccurred.connect(self.on_fetch_error)
+
+        # 初始化MatchParser
+        self.match_parser = MatchParser()
+        try:
+            self.match_parser.connect()
+            print("成功连接到match_parser数据库")
+        except Exception as e:
+            print(f"连接到match_parser数据库失败: {str(e)}")
+
+    def start_data_fetching(self):
+        """开始获取比赛数据"""
+        print("开始获取比赛数据...")
+
+        # 严格按照原始需求：起始日期设置为2000年1月1日
+        # 结束日期设置为2000年1月2日（获取一天的数据范围）
+        self.start_date = datetime(2025, 10, 1)
+        self.end_date = self.start_date + timedelta(days=9)  # 结束日期为次日
+
+        # 格式化为YYYY-MM-DD格式
+        self.start_date_str = self.start_date.strftime("%Y-%m-%d")
+        self.end_date_str = self.end_date.strftime("%Y-%m-%d")
+
+        # 多个主要足球联赛代码列表
+        league_codes = [
+            "PL",  # 英超
+            "BL1",  # 德甲
+            "SA",  # 西甲
+            "PD",  # 意甲
+            "FL1",  # 法甲
+            "CL",  # 欧冠
+        ]
+
+        # 初始化联赛索引，用于按顺序获取各联赛数据
+        self.current_league_index = 0
+        self.league_codes = league_codes
+
+        # 开始获取第一个联赛的数据
+        self.fetch_next_league()
+
+    def fetch_next_league(self):
+        """获取下一个联赛的数据"""
+        if self.current_league_index < len(self.league_codes):
+            league_code = self.league_codes[self.current_league_index]
+            print(
+                f"开始获取 {league_code} 联赛 {self.start_date_str} 到 {self.end_date_str} 的比赛数据"
+            )
+            self.football_fetcher.fetch_matches(
+                league_code, self.start_date_str, self.end_date_str
+            )
+        else:
+            print("所有联赛数据获取完毕")
+
+    def on_data_fetched(self, data):
+        """处理成功获取的JSON数据"""
+        league_code = self.league_codes[self.current_league_index]
+        print(
+            f"成功获取到 {league_code} 联赛数据，包含 {len(data.get('matches', []))} 场比赛"
+        )
+
+        # 将数据转换为JSON字符串
+        import json
+
+        json_str = json.dumps(data)
+
+        # 使用MatchParser解析并存储数据
+        try:
+            # 确保数据库已连接
+            if not self.match_parser.conn:
+                self.match_parser.connect()
+
+            # 解析并存储数据
+            inserted_count = self.match_parser.parse_and_store(json_str)
+            print(f"成功解析并存储了 {inserted_count} 条比赛记录")
+
+        except Exception as e:
+            print(f"解析或存储数据时出错: {str(e)}")
+            QMessageBox.warning(self, "处理错误", f"处理数据时出错: {str(e)}")
+
+        # 处理完当前联赛后，继续获取下一个联赛的数据
+        self.current_league_index += 1
+
+        # 判断是否所有联赛都已处理完毕
+        if self.current_league_index >= len(self.league_codes):
+            print("所有联赛数据获取完毕")
+            # 所有联赛数据获取完毕后，刷新当前界面显示的数据
+            if self.current_league:
+                print(f"刷新当前联赛 {self.current_league} 数据...")
+                self._load_and_process_data(self.current_league)
+        else:
+            # 继续获取下一个联赛的数据
+            self.fetch_next_league()
+
+    def on_fetch_error(self, error_msg):
+        """处理获取数据时的错误"""
+        league_code = self.league_codes[self.current_league_index]
+        print(f"获取 {league_code} 联赛数据时出错: {error_msg}")
+        QMessageBox.warning(
+            self, "获取错误", f"获取 {league_code} 联赛数据时出错: {error_msg}"
+        )
+
+        # 即使出错，也继续获取下一个联赛的数据
+        self.current_league_index += 1
+
+        # 判断是否所有联赛都已处理完毕
+        if self.current_league_index >= len(self.league_codes):
+            print("所有联赛数据获取完毕")
+            # 所有联赛数据获取完毕后，刷新当前界面显示的数据
+            if self.current_league:
+                print(f"刷新当前联赛 {self.current_league} 数据...")
+                self._load_and_process_data(self.current_league)
+        else:
+            # 继续获取下一个联赛的数据
+            self.fetch_next_league()
+
     def on_import_data(self):
         """
         导入数据按钮点击事件处理函数
@@ -582,3 +718,12 @@ class RankingSystemMainWindow(QMainWindow):
                 "导入完成",
                 f"所有文件导入完成!\n总计导入: {total_imported} 行\n跳过重复: {total_skipped} 行",
             )
+
+    def closeEvent(self, event):
+        """窗口关闭时释放资源"""
+        # 关闭match_parser的数据库连接
+        if hasattr(self, "match_parser") and self.match_parser:
+            self.match_parser.close()
+
+        # 调用父类的closeEvent方法
+        super().closeEvent(event)
