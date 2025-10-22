@@ -14,6 +14,10 @@ def main():
     """主函数，启动浩子比赛排名系统界面"""
     logger.info("启动浩子比赛排名系统")
 
+    # 确保设置好正确的编码
+    os.environ["QT_FONT_DPI"] = "96"
+    os.environ["PYTHONUTF8"] = "1"
+
     # 创建Qt应用程序
     app = QApplication(sys.argv)
     # 设置应用程序图标
@@ -39,6 +43,7 @@ def main():
     window.show()
 
     # 运行应用程序事件循环
+    print("启动应用程序事件循环...")
     sys.exit(app.exec())
 
 

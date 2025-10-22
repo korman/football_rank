@@ -527,8 +527,23 @@ class MatchDataManager:
     def __del__(self):
         """
         析构函数，确保连接被关闭
+        注意：在批处理模式下，我们不应该在这里关闭连接，以避免过早关闭
         """
-        self.close()
+        # 避免在批处理过程中因对象被垃圾回收而关闭连接
+        # 连接将由显式调用close()方法的代码关闭
+        if hasattr(self, "_batch_processing") and self._batch_processing:
+            logger.info("批处理模式下，析构函数不会关闭连接")
+        else:
+            self.close()
+
+    def set_batch_processing(self, is_batch):
+        """
+        设置批处理模式标志
+
+        Args:
+            is_batch (bool): True表示批处理模式，False表示普通模式
+        """
+        self._batch_processing = is_batch
 
     def get_league_matches(self, league_name, season=None, limit=None):
         """
